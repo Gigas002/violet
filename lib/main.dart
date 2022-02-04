@@ -67,6 +67,8 @@ Future<void> recordFlutterError(FlutterErrorDetails flutterErrorDetails) async {
 }
 
 void main() async {
+  await Logger.exportLog();
+
   WidgetsFlutterBinding.ensureInitialized();
   await FlutterDownloader.initialize(); // @dependent: android
   FlareCache.doesPrune = false;
