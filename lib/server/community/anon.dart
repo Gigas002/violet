@@ -47,12 +47,12 @@ class VioletCommunityAnonymous {
     return null;
   }
 
-  static String _userAppId;
+  static String? _userAppId;
   static Future<String> _getUserAppId() async {
     if (_userAppId == null)
       _userAppId =
-          (await SharedPreferences.getInstance()).getString('fa_userid');
-    return _userAppId;
+          (await SharedPreferences.getInstance()).getString('fa_userid')!;
+    return _userAppId!;
   }
 
   /* UserAppId, Body, TimeStamp */
@@ -70,7 +70,7 @@ class VioletCommunityAnonymous {
   }
 
   static Future<dynamic> postArtistComment(
-      int parent, String artistName, String commentBody) async {
+      int? parent, String artistName, String commentBody) async {
     if (parent == null) {
       return await _postV('/community/anon/artistcomment/write', {
         'UserAppId': await _getUserAppId(),

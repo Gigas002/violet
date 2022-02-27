@@ -10,9 +10,14 @@ class ThumbnailViewPage extends StatefulWidget {
   final String thumbnail;
   final String heroKey;
   final Map<String, String> headers;
-  final Size size;
+  final Size? size;
 
-  ThumbnailViewPage({this.thumbnail, this.headers, this.size, this.heroKey});
+  ThumbnailViewPage({
+    required this.thumbnail,
+    required this.headers,
+    required this.size,
+    required this.heroKey,
+  });
 
   @override
   _ThumbnailViewPageState createState() => _ThumbnailViewPageState();
@@ -25,7 +30,7 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance!.addPostFrameCallback((_) {
       setState(() {
         // loaded = true;
       });
@@ -112,14 +117,14 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
           latest = scale;
           if (scale < 0.6) Navigator.pop(context);
         } else if (tapCount != 2 ||
-            (detail.localPosition.dy - dragStart).abs() > 70)
+            (detail.localPosition.dy - dragStart!).abs() > 70)
           Navigator.pop(context);
       },
       onTapDown: (detail) {
         tapCount++;
         DateTime now = DateTime.now();
         if (currentBackPressTime == null ||
-            now.difference(currentBackPressTime) >
+            now.difference(currentBackPressTime!) >
                 Duration(milliseconds: 300)) {
           currentBackPressTime = now;
           return;
@@ -137,7 +142,7 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
   }
 
   int tapCount = 0;
-  double dragStart;
+  double? dragStart;
   bool zooming = false;
-  DateTime currentBackPressTime;
+  DateTime? currentBackPressTime;
 }

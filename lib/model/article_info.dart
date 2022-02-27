@@ -16,7 +16,7 @@ class ArticleInfo {
   final String artist;
   final List<QueryResult>? usableTabList;
   bool isBookmarked;
-  bool? lockRead;
+  bool lockRead;
 
   ArticleInfo({
     required this.queryResult,
@@ -28,7 +28,7 @@ class ArticleInfo {
     required this.title,
     required this.artist,
     this.usableTabList,
-    this.lockRead,
+    this.lockRead = false,
   });
 
   factory ArticleInfo.fromArticleInfo({
@@ -38,7 +38,7 @@ class ArticleInfo {
     required Map<String, String> headers,
     required bool isBookmarked,
     required ScrollController controller,
-    required List<QueryResult> usableTabList,
+    List<QueryResult>? usableTabList,
     bool lockRead = false,
   }) {
     var artist = (queryResult.artists() as String)

@@ -23,7 +23,7 @@ class ArticleListPage extends StatefulWidget {
   final List<QueryResult> cc;
   final String name;
 
-  ArticleListPage({this.name, this.cc});
+  ArticleListPage({required this.name, required this.cc});
 
   @override
   _ArticleListPageState createState() => _ArticleListPageState();
@@ -31,7 +31,7 @@ class ArticleListPage extends StatefulWidget {
 
 class _ArticleListPageState extends State<ArticleListPage> {
   bool _shouldReload = false;
-  Widget _cachedList;
+  Widget? _cachedList;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +90,7 @@ class _ArticleListPageState extends State<ArticleListPage> {
                           ),
                         ),
                       ),
-                      _cachedList
+                      _cachedList!
                     ],
                   ),
                 ),
@@ -214,7 +214,7 @@ class _ArticleListPageState extends State<ArticleListPage> {
         }
 
         // If Single Tag
-        if (!isSingleTag(split[0])) {
+        if (!isSingleTag(split[0])!) {
           var tag = split[1];
           if (['female', 'male'].contains(split[0]))
             tag = '${split[0]}:${split[1]}';
@@ -262,7 +262,7 @@ class _ArticleListPageState extends State<ArticleListPage> {
     return '';
   }
 
-  static bool isSingleTag(String prefix) {
+  static bool? isSingleTag(String prefix) {
     switch (prefix) {
       case 'language':
       case 'class':

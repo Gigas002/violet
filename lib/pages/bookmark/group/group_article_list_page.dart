@@ -33,9 +33,9 @@ import 'package:violet/widgets/search_bar.dart';
 // https://gist.github.com/collinjackson/4fddbfa2830ea3ac033e34622f278824#file-main-dart-L24
 class DotsIndicator extends AnimatedWidget {
   DotsIndicator({
-    this.controller,
-    this.itemCount,
-    this.onPageSelected,
+    required this.controller,
+    required this.itemCount,
+    required this.onPageSelected,
     this.color: Colors.white,
   }) : super(listenable: controller);
 
@@ -101,7 +101,7 @@ class GroupArticleListPage extends StatefulWidget {
   final String name;
   final int groupId;
 
-  GroupArticleListPage({this.name, this.groupId});
+  GroupArticleListPage({required this.name, required this.groupId});
 
   @override
   _GroupArticleListPageState createState() => _GroupArticleListPageState();
@@ -158,7 +158,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                       (!Settings.searchPure ? ' AND ExistOnHitomi=1' : ''))
                   .then((value) async {
                 var qr = Map<String, QueryResult>();
-                value.results.forEach((element) {
+                value.results!.forEach((element) {
                   qr[element.id().toString()] = element;
                 });
 
@@ -171,7 +171,8 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                       'https://ltn.hitomi.la/galleryblock/${element.article()}.html',
                       headers: headers,
                     );
-                    var article = await HitomiParser.parseGalleryBlock(hh.body);
+                    var article =
+                        await HitomiParser.parseGalleryBlock(hh!.body);
                     var meta = {
                       'Id': int.parse(element.article()),
                       'Title': article['Title'],
@@ -184,7 +185,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                     });
                     return;
                   }
-                  result.add(qr[element.article()]);
+                  result.add(qr[element.article()]!);
                 });
 
                 queryResult = result;
@@ -199,7 +200,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
   }
 
   bool _shouldRebuild = false;
-  Widget _cachedList;
+  Widget? _cachedList;
 
   @override
   Widget build(BuildContext context) {
@@ -247,7 +248,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                               ])),
                         ),
                       ),
-                      _cachedList
+                      _cachedList!
                     ],
                   ),
                 ),
@@ -306,12 +307,12 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
         Container(
           child: FloatingActionButton(
             onPressed: () async {
-              if (await showYesNoDialog(
+              if ((await showYesNoDialog(
                   context,
                   Translations.of(context)
                       .trans('deletebookmarkmsg')
                       .replaceAll('%s', checked.length.toString()),
-                  Translations.of(context).trans('bookmark'))) {
+                  Translations.of(context).trans('bookmark')))!) {
                 var bookmark = await Bookmark.getInstance();
                 checked.forEach((element) async {
                   bookmark.unbookmark(element);
@@ -398,7 +399,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                   return FadeTransition(opacity: animation, child: wi);
                 },
                 pageBuilder: (_, __, ___) => SearchType2(
-                  nowType: nowType,
+                  nowType: nowType!,
                 ),
               ))
                   .then((value) async {
@@ -481,7 +482,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
         }
 
         // If Single Tag
-        if (!isSingleTag(split[0])) {
+        if (!isSingleTag(split[0])!) {
           var tag = split[1];
           if (['female', 'male'].contains(split[0]))
             tag = '${split[0]}:${split[1]}';
@@ -529,7 +530,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
     return '';
   }
 
-  static bool isSingleTag(String prefix) {
+  static bool? isSingleTag(String prefix) {
     switch (prefix) {
       case 'language':
       case 'class':
@@ -553,7 +554,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
     return filterResult;
   }
 
-  int nowType = 3;
+  int? nowType = 3;
 
   Widget buildList() {
     var mm = nowType == 0 ? 3 : 2;
@@ -737,13 +738,13 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                   ),
                 )) ==
         1) {
-      if (await showYesNoDialog(
+      if ((await showYesNoDialog(
           context,
           Translations.of(context)
               .trans('movetoto')
               .replaceAll('%1', groups[choose].name())
               .replaceAll('%2', checked.length.toString()),
-          Translations.of(context).trans('movebookmark'))) {
+          Translations.of(context).trans('movebookmark')))!) {
         // There is a way to change only the group, but there is also re-register a new bookmark.
         // I chose the latter to suit the user's intentions.
 
@@ -752,7 +753,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
         var invIdIndex = Map<int, int>();
         for (int i = 0; i < queryResult.length; i++)
           invIdIndex[queryResult[i].id()] = i;
-        checked.sort((x, y) => invIdIndex[x].compareTo(invIdIndex[y]));
+        checked.sort((x, y) => invIdIndex[x]!.compareTo(invIdIndex[y]!));
 
         // 1. Get bookmark articles on source groupid
         var bm = await Bookmark.getInstance();

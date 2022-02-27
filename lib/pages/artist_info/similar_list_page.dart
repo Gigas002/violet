@@ -23,12 +23,12 @@ class SimilarListPage extends StatelessWidget {
   final List<Tuple2<String, double>> similarsAll;
 
   SimilarListPage({
-    this.prefix,
-    this.similarsAll,
-    this.isGroup,
-    this.isUploader,
-    this.isSeries,
-    this.isCharacter,
+    required this.prefix,
+    required this.similarsAll,
+    required this.isGroup,
+    required this.isUploader,
+    required this.isSeries,
+    required this.isCharacter,
   });
 
   Future<List<QueryResult>> _future(String e) async {
@@ -123,7 +123,7 @@ class SimilarListPage extends StatelessWidget {
                   count: '${Translations.of(context).trans('score')}: ' +
                       e.item2.toStringAsFixed(1) +
                       ' ',
-                  articles: qq,
+                  articles: qq!,
                 );
               },
             );
