@@ -22,9 +22,12 @@ class SearchBarPage extends StatefulWidget {
   final FlareControls heroController;
   final FlutterActorArtboard artboard;
   final String initText;
-  const SearchBarPage(
-      {Key key, this.artboard, this.initText, this.heroController})
-      : super(key: key);
+  const SearchBarPage({
+    required Key key,
+    required this.artboard,
+    required this.initText,
+    required this.heroController,
+  }) : super(key: key);
 
   @override
   _SearchBarPageState createState() => _SearchBarPageState();
@@ -122,9 +125,13 @@ class _SearchBarPageState extends State<SearchBarPage>
               elevation: 100,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4)),
-              color: Settings.themeWhat && Settings.themeBlack ? const Color(0xFF141414) : null,
+              color: Settings.themeWhat && Settings.themeBlack
+                  ? const Color(0xFF141414)
+                  : null,
               child: Material(
-                color:Settings.themeWhat && Settings.themeBlack ? const Color(0xFF141414) : null,
+                color: Settings.themeWhat && Settings.themeBlack
+                    ? const Color(0xFF141414)
+                    : null,
                 child: Container(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -163,7 +170,9 @@ class _SearchBarPageState extends State<SearchBarPage>
 
   _searchBar() {
     return Material(
-      color:Settings.themeWhat && Settings.themeBlack ? const Color(0xFF141414) : null,
+      color: Settings.themeWhat && Settings.themeBlack
+          ? const Color(0xFF141414)
+          : null,
       child: ListTile(
         title: TextFormField(
           cursorColor: Colors.black,

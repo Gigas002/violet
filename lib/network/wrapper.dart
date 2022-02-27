@@ -20,7 +20,7 @@ class HttpWrapper {
       Map<String, http.Response>();
 }
 
-Future<http.Response> get(String url, {Map<String, String> headers}) async {
+Future<http.Response?> get(String url, {Map<String, String>? headers}) async {
   if (url.contains('exhentai.org')) {
     if (HttpWrapper.cacheResponse.containsKey(url))
       return HttpWrapper.cacheResponse[url];
@@ -35,10 +35,10 @@ Future<http.Response> get(String url, {Map<String, String> headers}) async {
       var res = await http
           .get(Uri.parse(url), headers: headers)
           .timeout(Duration(seconds: retry > 3 ? 1000000 : 3), onTimeout: () {
-        return null;
+        return http.Response('', -1);
       });
       retry++;
-      if (res == null) {
+      if (res.statusCode == -1) {
         Logger.info('[Http Request] GETS: ' + url + ', $retry');
         continue;
       }
@@ -68,10 +68,10 @@ Future<http.Response> get(String url, {Map<String, String> headers}) async {
       var res = await http
           .get(Uri.parse(url), headers: headers)
           .timeout(Duration(seconds: retry > 3 ? 1000000 : 3), onTimeout: () {
-        return null;
+        return http.Response('', -1);
       });
       retry++;
-      if (res == null) {
+      if (res.statusCode == -1) {
         Logger.info('[Http Request] GETS: ' + url + ', $retry');
         continue;
       }
@@ -118,7 +118,7 @@ Future<http.Response> get(String url, {Map<String, String> headers}) async {
 }
 
 Future<http.Response> post(String url,
-    {Map<String, String> headers, dynamic body, Encoding encoding}) async {
+    {Map<String, String>? headers, dynamic body, Encoding? encoding}) async {
   Logger.info('[Http Request] POST: ' +
       url +
       '\nHEADERS: ' +

@@ -16,7 +16,7 @@ class SendPortData {
   final dynamic data;
   final SendPortType type;
 
-  const SendPortData({this.type, this.data});
+  const SendPortData({required this.type, this.data});
 }
 
 enum ReceivePortType {
@@ -31,7 +31,7 @@ class ReceivePortData {
   final dynamic data;
   final ReceivePortType type;
 
-  const ReceivePortData({this.type, this.data});
+  const ReceivePortData({required this.type, required this.data});
 }
 
 class IsolateDownloaderTask {
@@ -40,29 +40,29 @@ class IsolateDownloaderTask {
   final String fullpath;
   final Map<String, dynamic> header;
 
-  CancelToken cancelToken;
+  CancelToken? cancelToken;
 
   IsolateDownloaderTask({
-    this.id,
-    this.url,
-    this.fullpath,
-    this.header,
+    required this.id,
+    required this.url,
+    required this.fullpath,
+    required this.header,
   });
 
   static IsolateDownloaderTask fromDownloadTask(int taskId, DownloadTask task) {
     var header = Map<String, String>();
-    if (task.referer != null) header['referer'] = task.referer;
-    if (task.accept != null) header['accept'] = task.accept;
-    if (task.userAgent != null) header['user-agent'] = task.userAgent;
+    if (task.referer != null) header['referer'] = task.referer!;
+    if (task.accept != null) header['accept'] = task.accept!;
+    if (task.userAgent != null) header['user-agent'] = task.userAgent!;
     if (task.headers != null) {
-      task.headers.entries.forEach((element) {
+      task.headers!.entries.forEach((element) {
         header[element.key.toLowerCase()] = element.value;
       });
     }
     return IsolateDownloaderTask(
       id: taskId,
       url: task.url,
-      fullpath: task.downloadPath,
+      fullpath: task.downloadPath!,
       header: header,
     );
   }
@@ -81,7 +81,8 @@ class IsolateDownloaderOption {
   final int threadCount;
   final int maxRetryCount;
 
-  IsolateDownloaderOption({this.threadCount, this.maxRetryCount});
+  IsolateDownloaderOption(
+      {required this.threadCount, required this.maxRetryCount});
 }
 
 class IsolateDownloaderProgressProtocolUnit {
@@ -90,9 +91,9 @@ class IsolateDownloaderProgressProtocolUnit {
   final int totalSize;
 
   IsolateDownloaderProgressProtocolUnit({
-    this.id,
-    this.countSize,
-    this.totalSize,
+    required this.id,
+    required this.countSize,
+    required this.totalSize,
   });
 }
 
@@ -102,21 +103,21 @@ class IsolateDownloaderErrorUnit {
   final String stackTrace;
 
   IsolateDownloaderErrorUnit({
-    this.id,
-    this.error,
-    this.stackTrace,
+    required this.id,
+    required this.error,
+    required this.stackTrace,
   });
 }
 
 int _taskCurrentCount = 0;
 int _maxTaskCount = 0;
 int _maxRetryCount = 0;
-SendPort _sendPort;
-Queue<IsolateDownloaderTask> _dqueue;
-Map<int, IsolateDownloaderTask> _workingMap;
+SendPort? _sendPort;
+Queue<IsolateDownloaderTask>? _dqueue;
+Map<int, IsolateDownloaderTask>? _workingMap;
 
 Future<void> _processTask(IsolateDownloaderTask task) async {
-  _sendPort.send(ReceivePortData(type: ReceivePortType.append, data: task.id));
+  _sendPort!.send(ReceivePortData(type: ReceivePortType.append, data: task.id));
 
   var options = BaseOptions(
     contentType: Headers.formUrlEncodedContentType,
@@ -145,7 +146,7 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
         cancelToken: task.cancelToken,
         deleteOnError: true,
         onReceiveProgress: (count, total) {
-          _sendPort.send(
+          _sendPort!.send(
             ReceivePortData(
               type: ReceivePortType.progresss,
               data: IsolateDownloaderProgressProtocolUnit(
@@ -163,7 +164,7 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
         // check 404 or anythings
         if (res.statusCode != 200) {
           tooManyRetry = false;
-          _sendPort.send(
+          _sendPort!.send(
             ReceivePortData(
               type: ReceivePortType.error,
               data: IsolateDownloaderErrorUnit(
@@ -180,7 +181,7 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
         var file = File(task.fullpath);
         if (await file.exists()) {
           if (await file.length() != 0) {
-            _sendPort.send(
+            _sendPort!.send(
               ReceivePortData(
                 type: ReceivePortType.complete,
                 data: task.id,
@@ -192,7 +193,7 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
         }
       }
 
-      _sendPort.send(
+      _sendPort!.send(
         ReceivePortData(
           type: ReceivePortType.retry,
           data: {
@@ -208,7 +209,7 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
     } while (retryCount < _maxRetryCount);
 
     if (tooManyRetry) {
-      _sendPort.send(
+      _sendPort!.send(
         ReceivePortData(
           type: ReceivePortType.error,
           data: IsolateDownloaderErrorUnit(
@@ -220,7 +221,7 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
       );
     }
   } catch (e, st) {
-    _sendPort.send(
+    _sendPort!.send(
       ReceivePortData(
         type: ReceivePortType.error,
         data: IsolateDownloaderErrorUnit(
@@ -232,16 +233,16 @@ Future<void> _processTask(IsolateDownloaderTask task) async {
     );
   }
   _taskCurrentCount -= 1;
-  _workingMap.remove(task.id);
+  _workingMap!.remove(task.id);
   _resolveQueue();
 }
 
 void _resolveQueue() {
-  if (_dqueue.isEmpty) return;
+  if (_dqueue!.isEmpty) return;
   if (_taskCurrentCount < _maxTaskCount) {
     _taskCurrentCount += 1;
-    final _itask = _dqueue.removeFirst();
-    _workingMap[_itask.id] = _itask;
+    final _itask = _dqueue!.removeFirst();
+    _workingMap![_itask.id] = _itask;
     _processTask(_itask);
   }
 }
@@ -249,7 +250,7 @@ void _resolveQueue() {
 void _appendTask(IsolateDownloaderTask task) {
   var token = CancelToken();
   task.cancelToken = token;
-  _dqueue.add(task);
+  _dqueue!.add(task);
   _resolveQueue();
 }
 
@@ -260,13 +261,14 @@ void _initIsolateDownloader(IsolateDownloaderOption option) {
 }
 
 void _cancelTask(int taskId) {
-  _workingMap[taskId].cancelToken.cancel();
+  _workingMap![taskId]!.cancelToken!.cancel();
 }
 
 /// cancel all tasks and remove dqueue
 void _terminate() {
-  _dqueue.clear();
-  _workingMap.entries.forEach((element) => element.value.cancelToken.cancel());
+  _dqueue!.clear();
+  _workingMap!.entries
+      .forEach((element) => element.value.cancelToken!.cancel());
 }
 
 void _modifyTaskPoolSize(int sz) {

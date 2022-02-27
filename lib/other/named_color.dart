@@ -26,5 +26,5 @@ Map<int, String> colorValueToNameMap = {
 };
 
 extension NamedColor on Color {
-  String get name => colorValueToNameMap[value];
+  String get name => colorValueToNameMap[value]!;
 }

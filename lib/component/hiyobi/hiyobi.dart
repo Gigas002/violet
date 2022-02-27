@@ -12,7 +12,7 @@ class HiyobiManager {
     var gg = await http.get('https://cdn.hiyobi.me/json/${id}_list.json');
     var urls = gg.body;
     var files = jsonDecode(urls) as List<dynamic>;
-    var result = List<String>();
+    var result = <String>[];
 
     files.forEach((value) {
       if (value['haswebp'] == 1)

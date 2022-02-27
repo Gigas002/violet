@@ -7,10 +7,10 @@ import 'package:sqflite/sqflite.dart';
 import 'package:synchronized/synchronized.dart';
 
 class DataBaseManager {
-  String dbPath;
-  Database db;
+  String? dbPath;
+  Database? db;
   Lock lock = Lock();
-  static DataBaseManager _instance;
+  static DataBaseManager? _instance;
 
   DataBaseManager({this.dbPath});
 
@@ -27,57 +27,57 @@ class DataBaseManager {
   static Future<DataBaseManager> getInstance() async {
     if (_instance == null) {
       _instance =
-          create((await SharedPreferences.getInstance()).getString('db_path'));
+          create((await SharedPreferences.getInstance()).getString('db_path')!);
     }
-    return _instance;
+    return _instance!;
   }
 
   static Future<void> reloadInstance() async {
     _instance =
-        create((await SharedPreferences.getInstance()).getString('db_path'));
+        create((await SharedPreferences.getInstance()).getString('db_path')!);
   }
 
   Future _open() async {
-    db = await openDatabase(dbPath);
+    db = await openDatabase(dbPath!);
   }
 
   Future _close() async {
-    await db.close();
+    await db!.close();
   }
 
   Future<List<Map<String, dynamic>>> query(String str) async {
-    List<Map<String, dynamic>> result;
+    List<Map<String, dynamic>>? result;
     await lock.synchronized(() async {
       await _open();
-      result = await db.rawQuery(str);
+      result = await db!.rawQuery(str);
       await _close();
     });
-    return result;
+    return result!;
   }
 
   Future<void> execute(String str) async {
     await lock.synchronized(() async {
       await _open();
-      await db.execute(str);
+      await db!.execute(str);
       await _close();
     });
   }
 
   Future<int> insert(String name, Map<String, dynamic> wh) async {
-    int result;
+    int? result;
     await lock.synchronized(() async {
       await _open();
-      result = await db.insert(name, wh);
+      result = await db!.insert(name, wh);
       await _close();
     });
-    return result;
+    return result!;
   }
 
   Future<void> update(String name, Map<String, dynamic> wh, String where,
       List<dynamic> args) async {
     await lock.synchronized(() async {
       await _open();
-      await db.update(name, wh, where: where, whereArgs: args);
+      await db!.update(name, wh, where: where, whereArgs: args);
       await _close();
     });
   }
@@ -86,8 +86,8 @@ class DataBaseManager {
       int s1, int s2) async {
     await lock.synchronized(() async {
       await _open();
-      await db.rawUpdate("UPDATE $name SET $what=? WHERE $key=?", [s2, key1]);
-      await db.rawUpdate("UPDATE $name SET $what=? WHERE $key=?", [s1, key2]);
+      await db!.rawUpdate("UPDATE $name SET $what=? WHERE $key=?", [s2, key1]);
+      await db!.rawUpdate("UPDATE $name SET $what=? WHERE $key=?", [s1, key2]);
       await _close();
     });
   }
@@ -95,7 +95,7 @@ class DataBaseManager {
   Future<void> delete(String name, String where, List<dynamic> args) async {
     await lock.synchronized(() async {
       await _open();
-      await db.delete(name, where: where, whereArgs: args);
+      await db!.delete(name, where: where, whereArgs: args);
       await _close();
     });
   }

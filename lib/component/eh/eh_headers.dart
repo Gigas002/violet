@@ -5,21 +5,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:violet/network/wrapper.dart' as http;
 
 class EHSession {
-  static EHSession tryLogin(String id, String pass) {
+  static EHSession? tryLogin(String id, String pass) {
     return null;
   }
 
   static Future<String> requestString(String url) async {
     var cookie =
         (await SharedPreferences.getInstance()).getString('eh_cookies');
-    return (await http.get(url, headers: {"Cookie": cookie})).body;
+    return (await http.get(url, headers: {"Cookie": cookie!})).body;
   }
 
   static Future<String> postComment(String url, String content) async {
     var cookie =
         (await SharedPreferences.getInstance()).getString('eh_cookies');
     return (await http.post(url,
-            headers: {"Cookie": cookie},
+            headers: {"Cookie": cookie!},
             body: 'commenttext_new=' + Uri.encodeFull(content)))
         .body;
   }

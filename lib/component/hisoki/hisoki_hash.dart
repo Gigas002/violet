@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:tuple/tuple.dart';
 
 class HisokiHash {
-  static Map<String, String> hash;
+  static Map<String, String>? hash;
 
   static Future<void> init() async {
     String data;
@@ -21,11 +21,11 @@ class HisokiHash {
 
     Map<String, dynamic> _hashs = json.decode(data);
     hash = Map<String, String>();
-    hash.addEntries(
+    hash!.addEntries(
         _hashs.entries.map((e) => MapEntry(e.key, e.value as String)).toList());
   }
 
   static String getHash(String id) {
-    return hash[id];
+    return hash![id]!;
   }
 }

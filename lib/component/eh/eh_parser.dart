@@ -9,48 +9,48 @@ import 'package:tuple/tuple.dart';
 import 'package:violet/log/log.dart';
 
 class EHArticle {
-  String thumbnail;
-  String title;
-  String subTitle;
-  String type;
-  String uploader;
+  String? thumbnail;
+  String? title;
+  String? subTitle;
+  String? type;
+  String? uploader;
 
   // Left side of article info
-  String posted;
-  String parent;
-  String visible;
-  String language;
-  String fileSize;
-  int length;
-  int favorited;
+  String? posted;
+  String? parent;
+  String? visible;
+  String? language;
+  String? fileSize;
+  int? length;
+  int? favorited;
 
   // Right side of article info
-  String reclass;
-  List<String> languages;
-  List<String> group;
-  List<String> parody;
-  List<String> character;
-  List<String> artist;
-  List<String> male;
-  List<String> female;
-  List<String> misc;
+  String? reclass;
+  List<String>? languages;
+  List<String>? group;
+  List<String>? parody;
+  List<String>? character;
+  List<String>? artist;
+  List<String>? male;
+  List<String>? female;
+  List<String>? misc;
 
-  List<Tuple3<DateTime, String, String>> comment;
-  List<String> imageLink;
+  List<Tuple3<DateTime, String, String>>? comment;
+  List<String>? imageLink;
 }
 
 class EHResultArticle {
-  String url;
+  String? url;
 
-  String thumbnail;
-  String title;
+  String? thumbnail;
+  String? title;
 
-  String uploader;
-  String published;
-  String files;
-  String type;
+  String? uploader;
+  String? published;
+  String? files;
+  String? type;
 
-  Map<String, List<String>> descripts;
+  Map<String, List<String>>? descripts;
 }
 
 // E-Hentai, EX-Hentai Parser
@@ -67,7 +67,7 @@ class EHParser {
       var a = element.querySelector('a');
       if (a == null) return;
       var url = element.querySelector('a').attributes['href'];
-      if (!result.contains(url)) result.add(url);
+      if (!result.contains(url)) result.add(url!);
     });
     return result;
   }
@@ -75,13 +75,13 @@ class EHParser {
   // ex: https://exhentai.org/s/df24b19548/1212549-2
   static String getImagesAddress(String html) {
     var doc = parse(html).querySelector("div[id='i1']");
-    return doc.querySelector("div[id='i3'] a img").attributes['src'];
+    return doc.querySelector("div[id='i3'] a img").attributes['src']!;
   }
 
   // ex: https://exhentai.org/g/1212168/421ef300a8/
   // ex: https://exhentai.org/g/1212396/71a853083e/ //  5 pages
   // ex: https://exhentai.org/g/1201400/48f9b8e20a/ // 43 pages
-  static List<String> getPagesUrl(String html, {String url}) {
+  static List<String>? getPagesUrl(String html) {
     var doc = parse(html).querySelector("div.gtb");
 
     var url = <String>[];
@@ -92,26 +92,26 @@ class EHParser {
             .querySelectorAll("table tbody tr td[onclick*='document']")
             .forEach((element) {
           var a = element.querySelector('a');
-          if (a != null) url.add(a.attributes['href']);
+          if (a != null) url.add(a.attributes['href']!);
         });
       } else {
         url.add(doc
                 .querySelector("table tbody tr td.ptds")
                 .querySelector('a')
-                .attributes['href'] +
+                .attributes['href']! +
             '?p=0');
       }
     } catch (e) {
       url.add(doc
               .querySelector("table tbody tr td.ptds")
               .querySelector('a')
-              .attributes['href'] +
+              .attributes['href']! +
           '?p=0');
     }
 
     int max = 0;
     url.forEach((element) {
-      int value = int.tryParse(element.split('?p=')[1]);
+      int? value = int.tryParse(element.split('?p=')[1]);
       if (value != null) {
         if (max < value) max = value;
       }
@@ -132,7 +132,7 @@ class EHParser {
 
     article.thumbnail = _thumbnailPattern
         .stringMatch(
-            doc.querySelector("div[id=gleft] div div").attributes['style'])
+            doc.querySelector("div[id=gleft] div div").attributes['style']!)
         .toString();
 
     article.title = doc.querySelector("div[id='gd2'] h1[id='gn']").text;
@@ -362,7 +362,7 @@ class EHParser {
       article.type =
           element.querySelector('td > div').text.trim().toLowerCase();
       article.thumbnail = element.querySelector('img').attributes['src'];
-      if (article.thumbnail.startsWith('data'))
+      if (article.thumbnail!.startsWith('data'))
         article.thumbnail = element.querySelector('img').attributes['data-src'];
       article.published = element
           .querySelectorAll('td')[1]

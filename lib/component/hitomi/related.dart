@@ -9,7 +9,7 @@ import 'package:violet/database/query.dart';
 import 'package:violet/database/user/download.dart';
 
 class Related {
-  static Map<int, List<int>> related;
+  static Map<int, List<int>>? related;
 
   static Future<void> init() async {
     String data;
@@ -25,16 +25,16 @@ class Related {
     related = Map<int, List<int>>();
 
     _data.entries.forEach((element) {
-      related[int.parse(element.key)] =
+      related![int.parse(element.key)] =
           (element.value as List<dynamic>).map((e) => e as int).toList();
     });
   }
 
   static bool existsRelated(int articleId) {
-    return related.containsKey(articleId);
+    return related!.containsKey(articleId);
   }
 
   static List<int> getRelated(int articleId) {
-    return related[articleId];
+    return related![articleId]!;
   }
 }

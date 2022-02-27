@@ -28,32 +28,32 @@ typedef DoubleCallback = void Function(double);
 typedef DoubleDoubleCallback = Future Function(double, double);
 
 class DownloadTask {
-  final String accept;
-  final String userAgent;
-  final String referer;
-  final bool autoRedirection;
-  final bool retryWhenFail;
-  final int maxRetryCount;
-  final String cookie;
+  final String? accept;
+  final String? userAgent;
+  final String? referer;
+  final bool? autoRedirection;
+  final bool? retryWhenFail;
+  final int? maxRetryCount;
+  final String? cookie;
   final String url;
-  final List<String> failUrls;
-  final Map<String, String> headers;
-  final Map<String, String> query;
-  final String filename;
-  final FileNameFormat format;
+  final List<String>? failUrls;
+  final Map<String, String>? headers;
+  final Map<String, String>? query;
+  final String? filename;
+  final FileNameFormat? format;
 
   // This callback used in downloader
-  String downloadPath;
-  DoubleCallback sizeCallback;
-  DoubleCallback downloadCallback;
-  VoidStringCallback errorCallback;
-  VoidCallback startCallback;
-  VoidCallback completeCallback;
+  String? downloadPath;
+  DoubleCallback? sizeCallback;
+  DoubleCallback? downloadCallback;
+  VoidStringCallback? errorCallback;
+  VoidCallback? startCallback;
+  VoidCallback? completeCallback;
 
   // These used in isolate downloader
   int accDownloadSize = 0;
   bool isSizeEnsued = false;
-  int taskId;
+  int? taskId;
 
   DownloadTask({
     this.taskId,
@@ -66,7 +66,7 @@ class DownloadTask {
     this.retryWhenFail,
     this.maxRetryCount,
     this.cookie,
-    this.url,
+    required this.url,
     this.failUrls,
     this.headers,
     this.query,
@@ -78,35 +78,35 @@ class DownloadTask {
 class PostProcessorTask {}
 
 class FileNameFormat {
-  final String title;
-  final String id;
-  final String originalTitle;
-  final String extractor;
-  final String user;
-  final String account;
-  final String author;
-  final String englishAuthor;
-  final String group;
-  final String artist;
-  final String search;
-  final String uploadDate;
-  final String uploader;
-  final String uploaderId;
-  final String character;
-  final String gallery;
-  final String series;
-  final String seasonNumber;
-  final String episode;
-  final String episodeNumber;
-  final String filenameWithoutExtension;
-  final String extension;
-  final String url;
-  final String license;
-  final String genre;
-  final String laugage;
-  final String downloadDate;
-  final String className;
-  final String length;
+  final String? title;
+  final String? id;
+  final String? originalTitle;
+  final String? extractor;
+  final String? user;
+  final String? account;
+  final String? author;
+  final String? englishAuthor;
+  final String? group;
+  final String? artist;
+  final String? search;
+  final String? uploadDate;
+  final String? uploader;
+  final String? uploaderId;
+  final String? character;
+  final String? gallery;
+  final String? series;
+  final String? seasonNumber;
+  final String? episode;
+  final String? episodeNumber;
+  final String? filenameWithoutExtension;
+  final String? extension;
+  final String? url;
+  final String? license;
+  final String? genre;
+  final String? laugage;
+  final String? downloadDate;
+  final String? className;
+  final String? length;
 
   FileNameFormat({
     this.title,
@@ -201,7 +201,7 @@ class FileNameFormat {
         }
 
         var token = tokenb.toString().toLowerCase();
-        String literal;
+        String? literal;
 
         if (format.containsKey(token)) literal = format[token];
 
@@ -224,12 +224,12 @@ class FileNameFormat {
 
         if (type == 's') {
           if (pptk != "")
-            builder.write(literal
+            builder.write(literal!
                 .substring(0, int.parse(pptk))
                 .replaceAll('|', 'ㅣ')
                 .replaceAll(RegExp(r'[/\\?%*:|"<>]'), ''));
           else
-            builder.write(literal
+            builder.write(literal!
                 .toString()
                 .replaceAll('|', 'ㅣ')
                 .replaceAll(RegExp(r'[/\\?%*:|"<>]'), ''));
@@ -266,9 +266,9 @@ class GeneralDownloadProgress {
   final DoubleIntCallback progressCallback;
 
   GeneralDownloadProgress({
-    this.simpleInfoCallback,
-    this.thumbnailCallback,
-    this.progressCallback,
+    required this.simpleInfoCallback,
+    required this.thumbnailCallback,
+    required this.progressCallback,
   });
 }
 
@@ -281,14 +281,14 @@ abstract class Downloadable {
   bool acceptURL(String url);
   String fav();
   String defaultFormat();
-  Future<List<DownloadTask>> createTask(
+  Future<List<DownloadTask>?> createTask(
       String url, GeneralDownloadProgress gdp);
 }
 
 class ExtractorManager {
   static ExtractorManager instance = ExtractorManager();
 
-  List<Downloadable> _dl;
+  late List<Downloadable> _dl;
 
   ExtractorManager() {
     _dl = [

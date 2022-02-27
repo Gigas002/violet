@@ -12,7 +12,7 @@ import 'package:violet/database/query.dart';
 import 'package:violet/network/wrapper.dart' as http;
 
 class HitomiDonwloadManager extends Downloadable {
-  RegExp urlMatcher;
+  late RegExp urlMatcher;
 
   HitomiDonwloadManager() {
     urlMatcher = RegExp(
@@ -58,10 +58,10 @@ class HitomiDonwloadManager extends Downloadable {
   }
 
   @override
-  Future<List<DownloadTask>> createTask(
+  Future<List<DownloadTask>?> createTask(
       String url, GeneralDownloadProgress gdp) async {
     var match = urlMatcher.allMatches(url);
-    var id = match.first.namedGroup('id').trim();
+    var id = match.first.namedGroup('id')!.trim();
 
     var articles = (await (await DataBaseManager.getInstance()).query(
             "SELECT * FROM HitomiColumnModel WHERE Id=$id ORDER BY Id DESC LIMIT 1 OFFSET 0"))

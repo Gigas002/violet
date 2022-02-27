@@ -9,7 +9,7 @@ import 'package:violet/database/query.dart';
 import 'package:violet/database/user/download.dart';
 
 class Population {
-  static Map<int, int> population;
+  static Map<int, int>? population;
 
   static Future<void> init() async {
     String data;
@@ -24,7 +24,7 @@ class Population {
     population = Map<int, int>();
 
     for (int i = 0; i < _population.length; i++) {
-      population[_population[i] as int] = i;
+      population![_population[i] as int] = i;
     }
   }
 
@@ -38,29 +38,29 @@ class Population {
 
   static int compare(QueryResult a, QueryResult b) {
     // newest article always displayed on the bottom
-    if (!population.containsKey(a.id())) {
+    if (!population!.containsKey(a.id())) {
       // a == b
-      if (!population.containsKey(b.id())) return 0;
+      if (!population!.containsKey(b.id())) return 0;
       // a > b
       return 1;
     }
     // a < b
-    if (!population.containsKey(b.id())) return -1;
+    if (!population!.containsKey(b.id())) return -1;
 
-    return population[a.id()].compareTo(population[b.id()]);
+    return population![a.id()]!.compareTo(population![b.id()]!);
   }
 
   static int compareDownloadItem(DownloadItemModel a, DownloadItemModel b) {
     // newest article always displayed on the bottom
-    if (!population.containsKey(a.id())) {
+    if (!population!.containsKey(a.id())) {
       // a == b
-      if (!population.containsKey(b.id())) return 0;
+      if (!population!.containsKey(b.id())) return 0;
       // a > b
       return 1;
     }
     // a < b
-    if (!population.containsKey(b.id())) return -1;
+    if (!population!.containsKey(b.id())) return -1;
 
-    return population[a.id()].compareTo(population[b.id()]);
+    return population![a.id()]!.compareTo(population![b.id()]!);
   }
 }

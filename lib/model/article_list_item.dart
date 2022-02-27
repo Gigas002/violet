@@ -23,27 +23,27 @@ class ArticleListItem {
   final int viewed;
   final int seconds;
   final bool disableFilter;
-  final List<QueryResult> usableTabList;
+  final List<QueryResult>? usableTabList;
   final bool selectMode;
-  final DoubleTapCallback doubleTapCallback;
-  final SelectCallback selectCallback;
+  final DoubleTapCallback? doubleTapCallback;
+  final SelectCallback? selectCallback;
   // final bool isCheckMode;
   // bool isChecked;
 
   ArticleListItem({
-    @required this.key,
-    @required this.queryResult,
-    @required this.addBottomPadding,
-    @required this.showDetail,
-    @required this.width,
-    @required this.thumbnailTag,
-    @required this.bookmarkMode,
-    @required this.bookmarkCallback,
-    @required this.bookmarkCheckCallback,
-    @required this.viewed,
-    @required this.seconds,
-    @required this.disableFilter,
-    @required this.doubleTapCallback,
+    required this.key,
+    required this.queryResult,
+    required this.addBottomPadding,
+    required this.showDetail,
+    required this.width,
+    required this.thumbnailTag,
+    required this.bookmarkMode,
+    required this.bookmarkCallback,
+    required this.bookmarkCheckCallback,
+    required this.viewed,
+    required this.seconds,
+    required this.disableFilter,
+    this.doubleTapCallback,
     this.usableTabList,
     this.selectMode = false,
     this.selectCallback,
@@ -52,22 +52,22 @@ class ArticleListItem {
   });
 
   factory ArticleListItem.fromArticleListItem({
-    String key,
-    bool addBottomPadding,
-    bool showDetail,
-    QueryResult queryResult,
-    double width,
-    String thumbnailTag,
+    required String key,
+    required bool addBottomPadding,
+    required bool showDetail,
+    required QueryResult queryResult,
+    required double width,
+    required String thumbnailTag,
     bool bookmarkMode = false,
-    BookmarkCallback bookmarkCallback,
-    BookmarkCheckCallback bookmarkCheckCallback,
-    int seconds,
-    int viewed,
-    bool disableFilter,
-    List<QueryResult> usableTabList,
+    required BookmarkCallback bookmarkCallback,
+    required BookmarkCheckCallback bookmarkCheckCallback,
+    required int seconds,
+    required int viewed,
+    required bool disableFilter,
+    required List<QueryResult> usableTabList,
     bool selectMode = false,
-    SelectCallback selectCallback,
-    DoubleTapCallback doubleTapCallback,
+    SelectCallback? selectCallback,
+    DoubleTapCallback? doubleTapCallback,
     // bool isCheckMode = false,
     // bool isChecked = false,
   }) {

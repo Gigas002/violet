@@ -45,7 +45,7 @@ class HentaiManager {
   // if next offset == -1, then search end
   static Future<Tuple2<List<QueryResult>, int>> search(String what,
       [int offset = 0]) async {
-    int no = int.tryParse(what);
+    int? no = int.tryParse(what);
     // is Id Search?
     if (no != null) {
       return await idSearch(what);
@@ -71,7 +71,7 @@ class HentaiManager {
             .query("$queryString ORDER BY Id DESC LIMIT 1 OFFSET 0"))
         .map((e) => QueryResult(result: e))
         .toList();
-    int no = int.tryParse(what);
+    int no = int.parse(what);
 
     if (queryResult != null && queryResult.length != 0) {
       return Tuple2<List<QueryResult>, int>(queryResult, -1);
@@ -109,7 +109,7 @@ class HentaiManager {
           .first
           .split('random:')
           .last;
-      seed = double.tryParse(tseed);
+      seed = double.parse(tseed);
 
       wwhat = what.split(' ').where((x) => !x.startsWith('random:')).join(' ');
 
@@ -233,9 +233,9 @@ class HentaiManager {
                   'https://e-hentai.org/g/${qr.id()}/${qr.ehash()}/');
               var article = EHParser.parseArticleData(html);
               return EHentaiImageProvider(
-                count: article.length,
-                thumbnail: article.thumbnail,
-                pagesUrl: EHParser.getPagesUrl(html),
+                count: article.length!,
+                thumbnail: article.thumbnail!,
+                pagesUrl: EHParser.getPagesUrl(html)!,
                 isEHentai: true,
               );
             }
@@ -246,9 +246,9 @@ class HentaiManager {
                   'https://exhentai.org/g/${qr.id()}/${qr.ehash()}/');
               var article = EHParser.parseArticleData(html);
               return EHentaiImageProvider(
-                count: article.length,
-                thumbnail: article.thumbnail,
-                pagesUrl: EHParser.getPagesUrl(html),
+                count: article.length!,
+                thumbnail: article.thumbnail!,
+                pagesUrl: EHParser.getPagesUrl(html)!,
                 isEHentai: false,
               );
             }
@@ -389,31 +389,31 @@ class HentaiManager {
     return result.map((element) {
       var tag = <String>[];
 
-      if (element.descripts['female'] != null)
-        tag.addAll(element.descripts['female'].map((e) => "female:" + e));
-      if (element.descripts['male'] != null)
-        tag.addAll(element.descripts['male'].map((e) => "male:" + e));
-      if (element.descripts['misc'] != null)
-        tag.addAll(element.descripts['misc']);
+      if (element.descripts!['female'] != null)
+        tag.addAll(element.descripts!['female']!.map((e) => "female:" + e));
+      if (element.descripts!['male'] != null)
+        tag.addAll(element.descripts!['male']!.map((e) => "male:" + e));
+      if (element.descripts!['misc'] != null)
+        tag.addAll(element.descripts!['misc']!);
 
       var map = {
-        'Id': int.parse(element.url.split('/')[4]),
-        'EHash': element.url.split('/')[5],
+        'Id': int.parse(element.url!.split('/')[4]),
+        'EHash': element.url!.split('/')[5],
         'Title': element.title,
-        'Artists': element.descripts['artist'] != null
-            ? element.descripts['artist'].join('|')
+        'Artists': element.descripts!['artist'] != null
+            ? element.descripts!['artist']!.join('|')
             : 'n/a',
-        'Groups': element.descripts['group'] != null
-            ? element.descripts['group'].join('|')
+        'Groups': element.descripts!['group'] != null
+            ? element.descripts!['group']!.join('|')
             : null,
-        'Characters': element.descripts['character'] != null
-            ? element.descripts['character'].join('|')
+        'Characters': element.descripts!['character'] != null
+            ? element.descripts!['character']!.join('|')
             : null,
-        'Series': element.descripts['parody'] != null
-            ? element.descripts['parody'].join('|')
+        'Series': element.descripts!['parody'] != null
+            ? element.descripts!['parody']!.join('|')
             : 'n/a',
-        'Language': element.descripts['language'] != null
-            ? element.descripts['language']
+        'Language': element.descripts!['language'] != null
+            ? element.descripts!['language']!
                 .where((element) => !element.contains('translate'))
                 .join('|')
             : 'n/a',

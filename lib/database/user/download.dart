@@ -11,7 +11,7 @@ import 'package:violet/log/log.dart';
 
 class DownloadItemModel {
   Map<String, dynamic> result;
-  DownloadItemModel({this.result});
+  DownloadItemModel({required this.result});
 
   int id() => result['Id'];
 
@@ -69,7 +69,7 @@ class DownloadItemModel {
     return rfiles;
   }
 
-  String tryThumbnailFile() {
+  String? tryThumbnailFile() {
     if (files() != null) {
       var rfiles = (jsonDecode(files()) as List<dynamic>)
           .map((e) => e as String)
@@ -86,7 +86,7 @@ class DownloadItemModel {
 }
 
 class Download {
-  static Download _instance;
+  static Download? _instance;
   static Lock lock = Lock();
   static Future<Download> getInstance() async {
     await lock.synchronized(() async {
@@ -118,10 +118,10 @@ class Download {
           }
         }
         _instance = Download();
-        await _instance.init();
+        await _instance!.init();
       }
     });
-    return _instance;
+    return _instance!;
   }
 
   HashSet<int> _downloadedChecker = HashSet<int>();
@@ -129,7 +129,7 @@ class Download {
   Future<void> init() async {
     var items = await getDownloadItems();
     for (var item in items) {
-      int no = int.tryParse(item.url());
+      int? no = int.tryParse(item.url());
       if (no != null && item.state() == 0) {
         _downloadedChecker.add(no);
         _downloadedItems[no] = item;
@@ -144,7 +144,7 @@ class Download {
     if (!isDownloadedArticle(id)) return false;
 
     var item = _downloadedItems[id];
-    var files = jsonDecode(item.files()) as List<dynamic>;
+    var files = jsonDecode(item!.files()) as List<dynamic>;
 
     if (!File(files[0] as String).existsSync()) return false;
 
@@ -153,7 +153,7 @@ class Download {
 
   bool isValidDownloadedArticle(int id) {
     if (_validDownloadedArticleCache.containsKey(id))
-      return _validDownloadedArticleCache[id];
+      return _validDownloadedArticleCache[id]!;
 
     var v = _isValidDownloadedArticle(id);
     _validDownloadedArticleCache[id] = v;
@@ -165,7 +165,7 @@ class Download {
     _downloadedItems[id] = item;
   }
 
-  DownloadItemModel getDownloadedArticle(int id) => _downloadedItems[id];
+  DownloadItemModel getDownloadedArticle(int id) => _downloadedItems[id]!;
 
   Future<List<DownloadItemModel>> getDownloadItems() async {
     return (await (await CommonUserDatabase.getInstance())
