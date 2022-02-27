@@ -12,18 +12,19 @@ import 'package:violet/log/log.dart';
 class VioletChecker {
   static Future<bool> checkArticleDatabase() async {
     const testPrefix = '[Checker] checkArticleDatabase';
-    Database db;
+    Database? db;
 
     try {
       //
       //  0. get database path
       //
-      var dbPath = (await SharedPreferences.getInstance()).getString('db_path');
+      var dbPath =
+          (await SharedPreferences.getInstance()).getString('db_path')!;
 
       //
       // 1. check file exists
       //
-      if (!await File(dbPath).exists()) {
+      if (!await File(dbPath!).exists()) {
         await Logger.error(
             '$testPrefix\n' + 'database file not exists\n' + 'PATH:$dbPath');
         return true;
@@ -95,7 +96,7 @@ class VioletChecker {
 
   static Future<bool> checkUserDatabase() async {
     const testPrefix = '[Checker] checkUserDatabase';
-    Database db;
+    Database? db;
 
     try {
       //
@@ -177,7 +178,5 @@ class VioletChecker {
     }
   }
 
-  static Future<bool> checkDownloadable() async {
-    
-  }
+  // static Future<bool> checkDownloadable() async {}
 }
