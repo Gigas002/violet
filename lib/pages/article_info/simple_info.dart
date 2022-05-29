@@ -1,45 +1,32 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flare_flutter/flare_actor.dart';
 import 'package:flare_flutter/flare_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:violet/database/query.dart';
-import 'package:violet/database/user/bookmark.dart';
-import 'package:violet/widgets/article_item/thumbnail_manager.dart';
+import 'package:provider/provider.dart';
+import 'package:violet/model/article_info.dart';
+import 'package:violet/settings/settings.dart';
+import 'package:violet/widgets/article_item/image_provider_manager.dart';
 import 'package:violet/widgets/article_item/thumbnail_view_page.dart';
 
 class SimpleInfoWidget extends StatelessWidget {
-  final String heroKey;
-  final String thumbnail;
-  final Map<String, String> headers;
   final FlareControls _flareController = FlareControls();
-  bool isBookmarked;
-  final QueryResult queryResult;
-  final String title;
-  final String artist;
-  static DateFormat _dateFormat = DateFormat(' yyyy/MM/dd HH:mm');
+  static final DateFormat _dateFormat = DateFormat(' yyyy/MM/dd HH:mm');
 
-  SimpleInfoWidget({
-    this.heroKey,
-    this.thumbnail,
-    this.headers,
-    this.isBookmarked,
-    this.queryResult,
-    this.title,
-    this.artist,
-  });
+  SimpleInfoWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final data = Provider.of<ArticleInfo>(context);
     return Row(
       children: [
         Stack(
           children: <Widget>[
-            _thumbnail(context),
-            _bookmark(),
+            _thumbnail(context, data),
+            _bookmark(data),
           ],
         ),
         Expanded(
@@ -47,8 +34,8 @@ class SimpleInfoWidget extends StatelessWidget {
             height: 4 * 50.0,
             width: 3 * 50.0,
             child: Padding(
-              padding: EdgeInsets.all(4),
-              child: _simpleInfo(),
+              padding: const EdgeInsets.all(4),
+              child: _simpleInfo(data),
             ),
           ),
         ),
@@ -56,80 +43,89 @@ class SimpleInfoWidget extends StatelessWidget {
     );
   }
 
-  Widget _thumbnail(BuildContext context) {
+  Widget _thumbnail(BuildContext context, ArticleInfo data) {
     return Hero(
-      tag: heroKey,
+      tag: data.heroKey,
       child: Padding(
-        padding: EdgeInsets.all(8),
+        padding: const EdgeInsets.all(8),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(5.0),
+          borderRadius: BorderRadius.circular(3.0),
           child: GestureDetector(
-              onTap: () async {
-                Navigator.of(context).push(PageRouteBuilder(
-                  opaque: false,
-                  transitionDuration: Duration(milliseconds: 500),
-                  transitionsBuilder: (BuildContext context,
-                      Animation<double> animation,
-                      Animation<double> secondaryAnimation,
-                      Widget wi) {
-                    return new FadeTransition(opacity: animation, child: wi);
-                  },
-                  pageBuilder: (_, __, ___) => ThumbnailViewPage(
-                    size: null,
-                    thumbnail: thumbnail,
-                    headers: headers,
-                    heroKey: heroKey,
-                  ),
-                ));
-              },
-              child: thumbnail != null
-                  ? CachedNetworkImage(
-                      imageUrl: thumbnail,
-                      fit: BoxFit.cover,
-                      httpHeaders: headers,
-                      height: 4 * 50.0,
-                      width: 3 * 50.0,
-                    )
-                  : SizedBox(
-                      height: 4 * 50.0,
-                      width: 3 * 50.0,
-                      child: FlareActor(
-                        "assets/flare/Loading2.flr",
-                        alignment: Alignment.center,
-                        fit: BoxFit.fitHeight,
-                        animation: "Alarm",
-                      ),
-                    )),
+            onTap: () => _thumbnailTapped(context, data),
+            child: _thumbnailImage(data),
+          ),
         ),
       ),
     );
   }
 
-  Widget _bookmark() {
+  void _thumbnailTapped(BuildContext context, ArticleInfo data) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      transitionDuration: const Duration(milliseconds: 500),
+      transitionsBuilder: (BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation, Widget wi) {
+        return FadeTransition(opacity: animation, child: wi);
+      },
+      pageBuilder: (_, __, ___) => ThumbnailViewPage(
+        size: null,
+        thumbnail: data.thumbnail,
+        headers: data.headers,
+        heroKey: data.heroKey,
+      ),
+    ));
+  }
+
+  Widget _thumbnailImage(ArticleInfo data) {
+    return data.thumbnail != null
+        ? CachedNetworkImage(
+            imageUrl: data.thumbnail,
+            fit: BoxFit.cover,
+            httpHeaders: data.headers,
+            height: 4 * 50.0,
+            width: 3 * 50.0,
+          )
+        : SizedBox(
+            height: 4 * 50.0,
+            width: 3 * 50.0,
+            child: !Settings.simpleItemWidgetLoadingIcon
+                ? const FlareActor(
+                    'assets/flare/Loading2.flr',
+                    alignment: Alignment.center,
+                    fit: BoxFit.fitHeight,
+                    animation: 'Alarm',
+                  )
+                : Center(
+                    child: SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        color: Settings.majorColor.withAlpha(150),
+                      ),
+                    ),
+                  ),
+          );
+  }
+
+  Widget _bookmark(ArticleInfo data) {
     return Padding(
-      padding: EdgeInsets.all(8),
+      padding: const EdgeInsets.all(8),
       child: GestureDetector(
         child: Transform(
-          transform: new Matrix4.identity()..scale(1.0),
+          transform: Matrix4.identity()..scale(1.0),
           child: SizedBox(
             width: 40,
             height: 40,
             child: FlareActor(
               'assets/flare/likeUtsua.flr',
-              animation: isBookmarked ? "Like" : "IdleUnlike",
+              animation: data.isBookmarked ? 'Like' : 'IdleUnlike',
               controller: _flareController,
-              // color: Colors.orange,
-              // snapToEnd: true,
             ),
           ),
         ),
         onTap: () async {
-          isBookmarked = !isBookmarked;
-          if (isBookmarked)
-            await (await Bookmark.getInstance()).bookmark(queryResult.id());
-          else
-            await (await Bookmark.getInstance()).unbookmark(queryResult.id());
-          if (!isBookmarked)
+          await data.setIsBookmarked(!data.isBookmarked);
+          if (!data.isBookmarked)
             _flareController.play('Unlike');
           else {
             _flareController.play('Like');
@@ -139,98 +135,63 @@ class SimpleInfoWidget extends StatelessWidget {
     );
   }
 
-  Widget _simpleInfo() {
+  Widget _simpleInfo(ArticleInfo data) {
     return Stack(children: <Widget>[
-      _simpleInfoTextArtist(),
+      _simpleInfoTextArtist(data),
       Padding(
-        padding: EdgeInsets.fromLTRB(0, 4 * 50.0 - 50, 0, 0),
+        padding: const EdgeInsets.fromLTRB(0, 4 * 50.0 - 50, 0, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            _simpleInfoDateTime(),
-            _simpleInfoPages(),
+            _simpleInfoDateTime(data),
+            _simpleInfoPages(data),
           ],
-          // children: AnimationConfiguration.toStaggeredList(
-          //   duration: const Duration(milliseconds: 900),
-          //   childAnimationBuilder: (widget) => SlideAnimation(
-          //     horizontalOffset: 50.0,
-          //     child: FadeInAnimation(
-          //       child: widget,
-          //     ),
-          //   ),
-          //   children: <Widget>[
-          //     _simpleInfoDateTime(),
-          //     _simpleInfoPages(),
-          //   ],
-          // ),
         ),
       ),
     ]);
   }
 
-  Widget _simpleInfoTextArtist() {
+  Widget _simpleInfoTextArtist(ArticleInfo data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisAlignment: MainAxisAlignment.start,
       children: <Widget>[
-        Text(title,
+        Text(data.title,
             maxLines: 5,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        Text(artist),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(data.artist),
       ],
-      // children: AnimationConfiguration.toStaggeredList(
-      //     duration: const Duration(milliseconds: 900),
-      //     childAnimationBuilder: (widget) => SlideAnimation(
-      //           horizontalOffset: 50.0,
-      //           child: FadeInAnimation(
-      //             child: widget,
-      //           ),
-      //         ),
-      //     children: <Widget>[
-      //       Text(title,
-      //           maxLines: 5,
-      //           overflow: TextOverflow.ellipsis,
-      //           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-      //       Text(artist),
-      //     ]),
     );
   }
 
-  Widget _simpleInfoDateTime() {
+  Widget _simpleInfoDateTime(ArticleInfo data) {
     return Row(
       children: <Widget>[
-        Icon(
+        const Icon(
           Icons.date_range,
           size: 20,
         ),
         Text(
-            queryResult.getDateTime() != null
-                ? _dateFormat.format(queryResult.getDateTime())
+            data.queryResult.getDateTime() != null
+                ? _dateFormat.format(data.queryResult.getDateTime()!)
                 : '',
-            style: TextStyle(fontSize: 15)),
+            style: const TextStyle(fontSize: 15)),
       ],
     );
   }
 
-  Widget _simpleInfoPages() {
+  Widget _simpleInfoPages(ArticleInfo data) {
     return Row(
       children: <Widget>[
-        Icon(
+        const Icon(
           Icons.photo,
           size: 20,
         ),
         Text(
-            ' ' +
-                (thumbnail != null
-                    ? ThumbnailManager.get(queryResult.id())
-                            .item2
-                            .length
-                            .toString() +
-                        ' Page'
-                    : ''),
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+            ' ${data.thumbnail != null ? '${ProviderManager.getIgnoreDirty(data.queryResult.id()).length()} Page' : ''}',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
       ],
     );
   }

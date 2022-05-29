@@ -1,38 +1,60 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
-import 'dart:collection';
+import 'dart:math';
 
-import 'package:auto_animated/auto_animated.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:violet/component/hitomi/hitomi_parser.dart';
+import 'package:violet/component/hitomi/population.dart';
 import 'package:violet/database/query.dart';
 import 'package:violet/database/user/bookmark.dart';
-import 'package:violet/dialogs.dart';
-import 'package:violet/locale.dart';
+import 'package:violet/locale/locale.dart';
+import 'package:violet/model/article_list_item.dart';
+import 'package:violet/network/wrapper.dart' as http;
+import 'package:violet/other/dialogs.dart';
 import 'package:violet/pages/artist_info/search_type2.dart';
-import 'package:violet/pages/bookmark/group/bookmark_search_sort.dart';
-import 'package:violet/settings.dart';
+import 'package:violet/pages/bookmark/group/group_artist_article_list.dart';
+import 'package:violet/pages/bookmark/group/group_artist_list.dart';
+import 'package:violet/pages/segment/card_panel.dart';
+import 'package:violet/pages/segment/filter_page.dart';
+import 'package:violet/pages/segment/platform_navigator.dart';
+import 'package:violet/script/script_manager.dart';
+import 'package:violet/settings/settings.dart';
 import 'package:violet/widgets/article_item/article_list_item_widget.dart';
+import 'package:violet/widgets/dots_indicator.dart';
 import 'package:violet/widgets/floating_button.dart';
 import 'package:violet/widgets/search_bar.dart';
 
 class GroupArticleListPage extends StatefulWidget {
   final String name;
   final int groupId;
-  String heroKey;
 
-  GroupArticleListPage({this.name, this.groupId}) {
-    heroKey = Uuid().v4.toString();
-  }
+  const GroupArticleListPage({
+    Key? key,
+    required this.name,
+    required this.groupId,
+  }) : super(key: key);
 
   @override
-  _GroupArticleListPageState createState() => _GroupArticleListPageState();
+  State<GroupArticleListPage> createState() => _GroupArticleListPageState();
 }
 
 class _GroupArticleListPageState extends State<GroupArticleListPage> {
-  // List<BookmarkArticle> cc;
+  final PageController _controller = PageController(
+    initialPage: 0,
+  );
+
+  static const _kDuration = Duration(milliseconds: 300);
+  static const _kCurve = Curves.ease;
+
+  final ScrollController _scroll = ScrollController();
+
+  Map<String, GlobalKey> itemKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
@@ -40,118 +62,165 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
     refresh();
   }
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _rebuild() {
+    _shouldRebuild = true;
+    itemKeys.clear();
+    setState(() {
+      _shouldRebuild = true;
+      key = ObjectKey(const Uuid().v4());
+    });
+  }
+
+  Future<QueryResult> _tryGetArticleFromHitomi(String id) async {
+    var headers = await ScriptManager.runHitomiGetHeaderContent(id);
+    var hh = await http.get(
+      'https://ltn.hitomi.la/galleryblock/$id.html',
+      headers: headers,
+    );
+    var article = await HitomiParser.parseGalleryBlock(hh.body);
+    var meta = {
+      'Id': int.parse(id),
+      'Title': article['Title'],
+      'Artists': article['Artists'].join('|'),
+    };
+    return QueryResult(result: meta);
+  }
+
+  Future<void> _loadBookmarkAlignType() async {
+    nowType = (await SharedPreferences.getInstance())
+            .getInt('bookmark_${widget.groupId}') ??
+        3;
+  }
+
   void refresh() {
-    Bookmark.getInstance().then((value) => value.getArticle().then((value) {
-          var queryRaw = 'SELECT * FROM HitomiColumnModel WHERE ';
+    _loadBookmarkAlignType();
+    Bookmark.getInstance().then((value) =>
+        value.getArticle().then((value) async {
           var cc = value
               .where((e) => e.group() == widget.groupId)
               .toList()
               .reversed
               .toList();
-          if (cc.length == 0) {
-            queryResult = List<QueryResult>();
+
+          if (cc.isEmpty) {
+            queryResult = <QueryResult>[];
             filterResult = queryResult;
-            setState(() {});
+            _rebuild();
             return;
           }
-          queryRaw += cc.map((e) => 'Id=${e.article()}').join(' OR ');
-          QueryManager.query(queryRaw + ' AND ExistOnHitomi=1').then((value) {
-            var qr = Map<String, QueryResult>();
-            value.results.forEach((element) {
+
+          QueryManager.queryIds(cc.map((e) => int.parse(e.article())).toList())
+              .then((value) async {
+            var qr = <String, QueryResult>{};
+            value.forEach((element) {
               qr[element.id().toString()] = element;
             });
 
-            var result = List<QueryResult>();
-            cc.forEach((element) {
-              result.add(qr[element.article()]);
+            var result = <QueryResult>[];
+            cc.forEach((element) async {
+              var article = qr[element.article()];
+              article ??= await _tryGetArticleFromHitomi(element.article());
+              result.add(article);
             });
+
             queryResult = result;
-            if (isFilterUsed) {
-              result.clear();
-              queryResult.forEach((element) {
-                var succ = !isOr;
-                tagStates.forEach((key, value) {
-                  if (!value) return;
-                  if (succ == isOr) return;
-                  var split = key.split('|');
-                  var kk = prefix2Tag(split[0]);
-                  if (element.result[kk] == null && !isOr) {
-                    succ = false;
-                    return;
-                  }
-                  if (!isSingleTag(split[0])) {
-                    var tt = split[1];
-                    if (split[0] == 'female' || split[0] == 'male')
-                      tt = split[0] + ':' + split[1];
-                    if ((element.result[kk] as String)
-                            .contains('|' + tt + '|') ==
-                        isOr) succ = isOr;
-                  } else if ((element.result[kk] as String == split[1]) == isOr)
-                    succ = isOr;
-                });
-                if (succ) result.add(element);
-              });
-            }
-            filterResult = result;
-            setState(() {});
+            _applyFilter();
+            _rebuild();
           });
         }));
   }
 
+  bool _shouldRebuild = false;
+  Widget? _cachedList;
+
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final height =
-        MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top;
-    // if (similarsAll == null) return Text('asdf');
-    return Padding(
-      key: key,
-      // padding: EdgeInsets.all(0),
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: <Widget>[
-          Card(
-            elevation: 5,
-            color:
-                Settings.themeWhat ? Color(0xFF353535) : Colors.grey.shade100,
-            child: SizedBox(
-              width: width - 16,
-              height: height - 16,
-              child: Scaffold(
+    if (_cachedList == null || _shouldRebuild) {
+      final list = buildList();
+
+      _shouldRebuild = false;
+      _cachedList = list;
+    }
+
+    return CardPanel.build(
+      context,
+      child: Stack(
+        children: [
+          PageView(
+            controller: _controller,
+            children: [
+              Scaffold(
+                resizeToAvoidBottomInset: false,
+                // resizeToAvoidBottomPadding: false,
                 floatingActionButton: Visibility(
                   visible: checkMode,
                   child: AnimatedOpacity(
                     opacity: checkModePre ? 1.0 : 0.0,
-                    duration: Duration(milliseconds: 500),
+                    duration: const Duration(milliseconds: 500),
                     child: _floatingButton(),
                   ),
                 ),
                 // floatingActionButton: Container(child: Text('asdf')),
-                body: Container(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(0, 0, 0, 0),
-                    child: CustomScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      slivers: <Widget>[
-                        SliverPersistentHeader(
-                          floating: true,
-                          delegate: SearchBarSliver(
-                            minExtent: 64 + 12.0,
-                            maxExtent: 64.0 + 12,
-                            searchBar: Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Stack(children: <Widget>[
-                                  _filter(),
-                                  _title(),
-                                ])),
+                body: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+                  child: PrimaryScrollController(
+                    controller: _scroll,
+                    child: CupertinoScrollbar(
+                      scrollbarOrientation:
+                          Settings.bookmarkScrollbarPositionToLeft
+                              ? ScrollbarOrientation.left
+                              : ScrollbarOrientation.right,
+                      child: CustomScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        slivers: <Widget>[
+                          SliverPersistentHeader(
+                            floating: true,
+                            delegate: AnimatedOpacitySliver(
+                              searchBar: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8.0),
+                                  child: Stack(children: <Widget>[
+                                    _filter(),
+                                    _title(),
+                                  ])),
+                            ),
                           ),
-                        ),
-                        buildList()
-                      ],
+                          _cachedList!
+                        ],
+                      ),
                     ),
                   ),
+                ),
+              ),
+              GroupArtistList(name: widget.name, groupId: widget.groupId),
+              GroupArtistArticleList(
+                  name: widget.name, groupId: widget.groupId),
+            ],
+          ),
+          Positioned(
+            bottom: 0.0,
+            left: 0.0,
+            right: 0.0,
+            child: Container(
+              color: null,
+              padding: const EdgeInsets.all(20.0),
+              child: Center(
+                child: DotsIndicator(
+                  controller: _controller,
+                  itemCount: 3,
+                  onPageSelected: (int page) {
+                    _controller.animateToPage(
+                      page,
+                      duration: _kDuration,
+                      curve: _kCurve,
+                    );
+                  },
                 ),
               ),
             ),
@@ -170,17 +239,20 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
               filterResult.forEach((element) {
                 checked.add(element.id());
               });
-              setState(() {});
+              _shouldRebuild = true;
+              setState(() {
+                _shouldRebuild = true;
+              });
             },
             elevation: 4,
             heroTag: 'a',
-            child: Icon(MdiIcons.checkAll),
+            child: const Icon(MdiIcons.checkAll),
           ),
         ),
         Container(
           child: FloatingActionButton(
             onPressed: () async {
-              if (await Dialogs.yesnoDialog(
+              if (await showYesNoDialog(
                   context,
                   Translations.of(context)
                       .trans('deletebookmarkmsg')
@@ -192,15 +264,11 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                 });
                 checked.clear();
                 refresh();
-                Future.delayed(Duration(milliseconds: 300))
-                    .then((value) => setState(() {
-                          key = ObjectKey(Uuid().v4());
-                        }));
               }
             },
             elevation: 4,
             heroTag: 'b',
-            child: Icon(MdiIcons.delete),
+            child: const Icon(MdiIcons.delete),
           ),
         ),
         Container(
@@ -208,18 +276,22 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
             onPressed: moveChecked,
             elevation: 4,
             heroTag: 'c',
-            child: Icon(MdiIcons.folderMove),
+            child: const Icon(MdiIcons.folderMove),
           ),
         ),
       ],
       animatedIconData: AnimatedIcons.menu_close,
       exitCallback: () {
+        _shouldRebuild = true;
         setState(() {
+          _shouldRebuild = true;
           checkModePre = false;
           checked.clear();
         });
-        Future.delayed(Duration(milliseconds: 500)).then((value) {
+        Future.delayed(const Duration(milliseconds: 500)).then((value) {
+          _shouldRebuild = true;
           setState(() {
+            _shouldRebuild = true;
             checkMode = false;
           });
         });
@@ -231,15 +303,19 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
     return Align(
       alignment: Alignment.centerRight,
       child: Hero(
-        tag: "searchtype2",
+        tag: 'searchtype2',
         child: Card(
-          color: Settings.themeWhat ? Color(0xFF353535) : Colors.grey.shade100,
-          shape: RoundedRectangleBorder(
+          color: Settings.themeWhat
+              ? Settings.themeBlack
+                  ? const Color(0xFF141414)
+                  : const Color(0xFF353535)
+              : Colors.grey.shade100,
+          shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(
               Radius.circular(8.0),
             ),
           ),
-          elevation: 100,
+          elevation: !Settings.themeFlat ? 100 : 0,
           clipBehavior: Clip.antiAliasWithSaveLayer,
           child: InkWell(
             child: SizedBox(
@@ -247,7 +323,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
               width: 48,
               child: Stack(
                 alignment: Alignment.center,
-                children: <Widget>[
+                children: const <Widget>[
                   Icon(
                     MdiIcons.formatListText,
                     color: Colors.grey,
@@ -260,12 +336,12 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
               Navigator.of(context)
                   .push(PageRouteBuilder(
                 opaque: false,
-                transitionDuration: Duration(milliseconds: 500),
+                transitionDuration: const Duration(milliseconds: 500),
                 transitionsBuilder: (BuildContext context,
                     Animation<double> animation,
                     Animation<double> secondaryAnimation,
                     Widget wi) {
-                  return new FadeTransition(opacity: animation, child: wi);
+                  return FadeTransition(opacity: animation, child: wi);
                 },
                 pageBuilder: (_, __, ___) => SearchType2(
                   nowType: nowType,
@@ -274,64 +350,35 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
                   .then((value) async {
                 if (value == null) return;
                 nowType = value;
-                await Future.delayed(Duration(milliseconds: 50), () {
-                  setState(() {});
+                itemKeys.clear();
+                await (await SharedPreferences.getInstance())
+                    .setInt('bookmark_${widget.groupId}', value);
+                await Future.delayed(const Duration(milliseconds: 50), () {
+                  _shouldRebuild = true;
+                  setState(() {
+                    _shouldRebuild = true;
+                  });
                 });
               });
             },
             onLongPress: () {
               if (checkMode) return;
-              Navigator.of(context)
-                  .push(PageRouteBuilder(
-                // opaque: false,
-                transitionDuration: Duration(milliseconds: 500),
-                transitionsBuilder: (BuildContext context,
-                    Animation<double> animation,
-                    Animation<double> secondaryAnimation,
-                    Widget wi) {
-                  return new FadeTransition(opacity: animation, child: wi);
-                },
-                pageBuilder: (_, __, ___) => BookmarkSearchSort(
-                  queryResult: queryResult,
-                  tagStates: tagStates,
-                  groupStates: groupStates,
-                  isOr: isOr,
+              isFilterUsed = true;
+
+              PlatformNavigator.navigateFade(
+                context,
+                Provider<FilterController>.value(
+                  value: _filterController,
+                  child: FilterPage(
+                    queryResult: queryResult,
+                  ),
                 ),
-              ))
-                  .then((value) async {
-                tagStates = value[0];
-                groupStates = value[1];
-                isOr = value[2];
-                var result = List<QueryResult>();
-                queryResult.forEach((element) {
-                  var succ = !isOr;
-                  tagStates.forEach((key, value) {
-                    if (!value) return;
-                    if (succ == isOr) return;
-                    var split = key.split('|');
-                    var kk = prefix2Tag(split[0]);
-                    if (element.result[kk] == null && !isOr) {
-                      succ = false;
-                      return;
-                    }
-                    if (!isSingleTag(split[0])) {
-                      var tt = split[1];
-                      if (split[0] == 'female' || split[0] == 'male')
-                        tt = split[0] + ':' + split[1];
-                      if ((element.result[kk] as String)
-                              .contains('|' + tt + '|') ==
-                          isOr) succ = isOr;
-                    } else if ((element.result[kk] as String == split[1]) ==
-                        isOr) succ = isOr;
-                  });
-                  if (succ) result.add(element);
-                });
-                filterResult = result;
+              ).then((value) async {
+                _applyFilter();
+                _shouldRebuild = true;
                 setState(() {
-                  key = ObjectKey(Uuid().v4());
-                });
-                await Future.delayed(Duration(milliseconds: 50), () {
-                  setState(() {});
+                  _shouldRebuild = true;
+                  key = ObjectKey(const Uuid().v4());
                 });
               });
             },
@@ -343,22 +390,66 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
 
   Widget _title() {
     return Padding(
-      padding: EdgeInsets.only(top: 24, left: 12),
+      padding: const EdgeInsets.only(top: 24, left: 12),
       child: Text(widget.name,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
     );
   }
 
+  ObjectKey key = ObjectKey(const Uuid().v4());
+
+  final FilterController _filterController =
+      FilterController(heroKey: 'searchtype2');
+
   bool isFilterUsed = false;
-  bool isOr = false;
-  Map<String, bool> tagStates = Map<String, bool>();
-  Map<String, bool> groupStates = Map<String, bool>();
 
-  bool scaleOnce = false;
-  List<QueryResult> queryResult = List<QueryResult>();
-  List<QueryResult> filterResult = List<QueryResult>();
+  List<QueryResult> queryResult = <QueryResult>[];
+  List<QueryResult> filterResult = <QueryResult>[];
 
-  ObjectKey key = ObjectKey(Uuid().v4());
+  void _applyFilter() {
+    var result = <QueryResult>[];
+    var isOr = _filterController.isOr;
+    queryResult.forEach((element) {
+      // key := <group>:<name>
+      var succ = !_filterController.isOr;
+      _filterController.tagStates.forEach((key, value) {
+        if (!value) return;
+
+        // Check match just only one
+        if (succ == isOr) return;
+
+        // Get db column name from group
+        var split = key.split('|');
+        var dbColumn = prefix2Tag(split[0]);
+
+        // There is no matched db column name
+        if (element.result[dbColumn] == null && !isOr) {
+          succ = false;
+          return;
+        }
+
+        // If Single Tag
+        if (!isSingleTag(split[0])) {
+          var tag = split[1];
+          if (['female', 'male'].contains(split[0]))
+            tag = '${split[0]}:${split[1]}';
+          if ((element.result[dbColumn] as String).contains('|$tag|') == isOr)
+            succ = isOr;
+        }
+
+        // If Multitag
+        else if ((element.result[dbColumn] as String == split[1]) == isOr)
+          succ = isOr;
+      });
+      if (succ) result.add(element);
+    });
+
+    filterResult = result;
+    isFilterUsed = true;
+
+    if (_filterController.isPopulationSort)
+      Population.sortByPopulation(filterResult);
+  }
 
   static String prefix2Tag(String prefix) {
     switch (prefix) {
@@ -389,7 +480,6 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
   static bool isSingleTag(String prefix) {
     switch (prefix) {
       case 'language':
-      case 'series':
       case 'class':
       case 'type':
       case 'uploader':
@@ -400,9 +490,10 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
       case 'tag':
       case 'female':
       case 'male':
+      case 'series':
+      default:
         return false;
     }
-    return null;
   }
 
   List<QueryResult> filter() {
@@ -419,86 +510,89 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
       case 0:
       case 1:
         return SliverPadding(
-          padding: EdgeInsets.fromLTRB(12, 0, 12, 16),
-          sliver: LiveSliverGrid(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          sliver: SliverGrid(
             key: key,
-            showItemInterval: Duration(milliseconds: 50),
-            showItemDuration: Duration(milliseconds: 150),
-            visibleFraction: 0.001,
-            itemCount: filterResult.length,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: mm,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
               childAspectRatio: 3 / 4,
             ),
-            itemBuilder: (context, index, animation) {
-              return FadeTransition(
-                opacity: Tween<double>(
-                  begin: 0,
-                  end: 1,
-                ).animate(animation),
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: Offset(0, -0.1),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: Padding(
-                    padding: EdgeInsets.zero,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: SizedBox(
-                        child: ArticleListItemVerySimpleWidget(
-                          queryResult: filterResult[index],
-                          showDetail: false,
-                          addBottomPadding: false,
-                          width: (windowWidth - 4.0) / mm,
-                          thumbnailTag: Uuid().v4(),
-                          bookmarkMode: true,
-                          bookmarkCallback: longpress,
-                          bookmarkCheckCallback: check,
-                          isCheckMode: checkMode,
-                          isChecked: checked.contains(filterResult[index].id()),
-                        ),
+            delegate: SliverChildListDelegate(filterResult.map((e) {
+              var keyStr = 'group/${widget.groupId}/$nowType/${e.id()}';
+              if (!itemKeys.containsKey(keyStr)) itemKeys[keyStr] = GlobalKey();
+              return Padding(
+                key: itemKeys[keyStr],
+                padding: EdgeInsets.zero,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SizedBox(
+                    child: Provider<ArticleListItem>.value(
+                      value: ArticleListItem.fromArticleListItem(
+                        queryResult: e,
+                        showDetail: false,
+                        addBottomPadding: false,
+                        width: (windowWidth - 4.0) / mm,
+                        thumbnailTag: const Uuid().v4(),
+                        bookmarkMode: true,
+                        bookmarkCallback: longpress,
+                        bookmarkCheckCallback: check,
+                        usableTabList: filterResult,
+                        // isCheckMode: checkMode,
+                        // isChecked: checked.contains(e.id()),
+                      ),
+                      child: ArticleListItemVerySimpleWidget(
+                        isCheckMode: checkMode,
+                        isChecked: checked.contains(e.id()),
                       ),
                     ),
                   ),
                 ),
               );
-            },
+            }).toList()),
           ),
         );
 
       case 2:
       case 3:
         return SliverPadding(
-          padding: EdgeInsets.fromLTRB(12, 0, 12, 16),
-          sliver: LiveSliverList(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          sliver: SliverList(
             key: key,
-            itemCount: filterResult.length,
-            itemBuilder: (context, index, animation) {
+            delegate: SliverChildListDelegate(filterResult.map((x) {
+              var keyStr = 'group/${widget.groupId}/$nowType/${x.id()}';
+              if (!itemKeys.containsKey(keyStr)) itemKeys[keyStr] = GlobalKey();
               return Align(
+                key: itemKeys[keyStr],
                 alignment: Alignment.center,
-                child: ArticleListItemVerySimpleWidget(
-                  queryResult: filterResult[index],
-                  showDetail: nowType == 3,
-                  addBottomPadding: true,
-                  width: (windowWidth - 4.0),
-                  thumbnailTag: Uuid().v4(),
-                  bookmarkMode: true,
-                  bookmarkCallback: longpress,
-                  bookmarkCheckCallback: check,
-                  isCheckMode: checkMode,
-                  isChecked: checked.contains(filterResult[index].id()),
+                child: Provider<ArticleListItem>.value(
+                  value: ArticleListItem.fromArticleListItem(
+                    queryResult: x,
+                    showDetail: nowType == 3,
+                    addBottomPadding: true,
+                    width: (windowWidth - 4.0),
+                    thumbnailTag: const Uuid().v4(),
+                    bookmarkMode: true,
+                    bookmarkCallback: longpress,
+                    bookmarkCheckCallback: check,
+                    usableTabList: filterResult,
+                    // isCheckMode: checkMode,
+                    // isChecked: checked.contains(x.id()),
+                  ),
+                  child: ArticleListItemVerySimpleWidget(
+                    isCheckMode: checkMode,
+                    isChecked: checked.contains(x.id()),
+                  ),
                 ),
               );
-            },
+            }).toList()),
           ),
         );
 
       default:
         return Container(
-          child: Center(
+          child: const Center(
             child: Text('Error :('),
           ),
         );
@@ -507,14 +601,18 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
 
   bool checkMode = false;
   bool checkModePre = false;
-  HashSet<int> checked = HashSet<int>();
+  List<int> checked = [];
 
   void longpress(int article) {
+    print(article);
     if (!checkMode) {
       checkMode = true;
       checkModePre = true;
       checked.add(article);
-      setState(() {});
+      _shouldRebuild = true;
+      setState(() {
+        _shouldRebuild = true;
+      });
     }
   }
 
@@ -522,14 +620,18 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
     if (check)
       checked.add(article);
     else {
-      checked.remove(article);
-      if (checked.length == 0) {
+      checked.removeWhere((element) => element == article);
+      if (checked.isEmpty) {
+        _shouldRebuild = true;
         setState(() {
+          _shouldRebuild = true;
           checkModePre = false;
           checked.clear();
         });
-        Future.delayed(Duration(milliseconds: 500)).then((value) {
+        Future.delayed(const Duration(milliseconds: 500)).then((value) {
+          _shouldRebuild = true;
           setState(() {
+            _shouldRebuild = true;
             checkMode = false;
           });
         });
@@ -545,37 +647,39 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
     int choose = -9999;
     if (await showDialog(
             context: context,
-            child: AlertDialog(
-              title: Text(Translations.of(context).trans('wheretomove')),
-              actions: <Widget>[
-                RaisedButton(
-                  color: Settings.majorColor,
-                  child: new Text(Translations.of(context).trans('cancel')),
-                  onPressed: () {
-                    Navigator.pop(context, 0);
-                  },
-                ),
-              ],
-              content: SizedBox(
-                width: 200,
-                height: 300,
-                child: ListView.builder(
-                  itemCount: groups.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      title: Text(groups[index].name()),
-                      subtitle: Text(groups[index].description()),
-                      onTap: () {
-                        choose = index;
-                        Navigator.pop(context, 1);
+            builder: (BuildContext context) => AlertDialog(
+                  title: Text(Translations.of(context).trans('wheretomove')),
+                  actions: <Widget>[
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        primary: Settings.majorColor,
+                      ),
+                      child: Text(Translations.of(context).trans('cancel')),
+                      onPressed: () {
+                        Navigator.pop(context, 0);
                       },
-                    );
-                  },
-                ),
-              ),
-            )) ==
+                    ),
+                  ],
+                  content: SizedBox(
+                    width: 200,
+                    height: 300,
+                    child: ListView.builder(
+                      itemCount: groups.length,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          title: Text(groups[index].name()),
+                          subtitle: Text(groups[index].description()),
+                          onTap: () {
+                            choose = index;
+                            Navigator.pop(context, 1);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                )) ==
         1) {
-      if (await Dialogs.yesnoDialog(
+      if (await showYesNoDialog(
           context,
           Translations.of(context)
               .trans('movetoto')
@@ -586,6 +690,11 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
         // I chose the latter to suit the user's intentions.
 
         // Atomic!!
+        // 0. Sort Checked
+        var invIdIndex = <int, int>{};
+        for (int i = 0; i < queryResult.length; i++)
+          invIdIndex[queryResult[i].id()] = i;
+        checked.sort((x, y) => invIdIndex[x]!.compareTo(invIdIndex[y]!));
 
         // 1. Get bookmark articles on source groupid
         var bm = await Bookmark.getInstance();
@@ -599,7 +708,7 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
         // final path = File('${cacheDir.path}/bookmark_cache+${Uuid().v4()}');
         // path.writeAsString(jsonEncode(checked));
 
-        for (var e in checked) {
+        for (var e in checked.reversed) {
           // 3. Delete source bookmarks
           await bm.unbookmark(e);
           // 4. Add src bookmarks with new groupid
@@ -608,20 +717,20 @@ class _GroupArticleListPageState extends State<GroupArticleListPage> {
         }
 
         // 5. Update UI
+        _shouldRebuild = true;
         setState(() {
+          _shouldRebuild = true;
           checkModePre = false;
           checked.clear();
         });
-        Future.delayed(Duration(milliseconds: 500)).then((value) {
+        _shouldRebuild = true;
+        Future.delayed(const Duration(milliseconds: 500)).then((value) {
           setState(() {
+            _shouldRebuild = true;
             checkMode = false;
           });
         });
         refresh();
-        Future.delayed(Duration(milliseconds: 300))
-            .then((value) => setState(() {
-                  key = ObjectKey(Uuid().v4());
-                }));
       }
     } else {}
   }

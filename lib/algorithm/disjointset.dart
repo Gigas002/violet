@@ -1,15 +1,13 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 // Forrest based union-find data structure.
 class DisjointSet {
   // Disjoint Set Array
-  List<int> array;
+  late List<int> array;
 
-  DisjointSet(int N) {
-    array = List<int>(N);
-
-    for (int i = 0; i < N; i++) array[i] = i;
+  DisjointSet(int n) {
+    array = Iterable.generate(n, (i) => i).toList();
   }
 
   int find(int x) {
@@ -34,6 +32,4 @@ class DisjointSet {
 }
 
 // Linked List based union-find data structure.
-class UnionFind {
-
-}
+class UnionFind {}

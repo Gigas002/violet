@@ -3,8 +3,8 @@
 // https://github.com/tommy351/eh-redux/blob/master/lib/utils/cookie.dart
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
@@ -30,8 +30,10 @@ Map<String, String> parseCookies(String cookies) {
 // Or cookie?
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({Key? key}) : super(key: key);
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
@@ -43,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Login"),
+        title: const Text('Login'),
       ),
       body: WebView(
         initialUrl: _loginUrl,
@@ -60,16 +62,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _checkCookie() async {
     final controller = await _webViewController.future;
-    final cookieString =
-        jsonDecode(await controller.evaluateJavascript('document.cookie'))
-            as String;
+    final cookieString = jsonDecode(
+            await controller.runJavascriptReturningResult('document.cookie'))
+        as String;
     final cookies = parseCookies(cookieString);
     developer.log('Get cookies: $cookies');
 
-    if (cookies.containsKey('ipb_member_id')) {
+    if (cookies.containsKey('ipb_member_id') &&
+        cookies.containsKey('igneous') &&
+        cookies.containsKey('ipb_pass_hash')) {
       // await sessionStore.setSession(cookieString);
       // await _cookieManager.clearCookies();
-      Navigator.pop(context);
+      Navigator.pop(context, cookieString);
+    } else if (cookies.containsKey('ipb_member_id')) {
+      controller.loadUrl('https://exhentai.org');
     }
   }
 }

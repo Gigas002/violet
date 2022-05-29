@@ -1,20 +1,20 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
-import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/material.dart';
 import 'package:tuple/tuple.dart';
+import 'package:violet/component/hitomi/displayed_tag.dart';
 import 'package:violet/component/hitomi/hitomi.dart';
-import 'package:violet/locale.dart';
-import 'package:violet/settings.dart';
+import 'package:violet/locale/locale.dart';
+import 'package:violet/settings/settings.dart';
 
 class TagSelectorDialog extends StatefulWidget {
   final String what;
 
-  TagSelectorDialog({this.what});
+  const TagSelectorDialog({Key? key, required this.what}) : super(key: key);
 
   @override
-  _TagSelectorDialogState createState() => _TagSelectorDialogState();
+  State<TagSelectorDialog> createState() => _TagSelectorDialogState();
 }
 
 class _TagSelectorDialogState extends State<TagSelectorDialog> {
@@ -40,25 +40,36 @@ class _TagSelectorDialogState extends State<TagSelectorDialog> {
 
     if (MediaQuery.of(context).viewInsets.bottom < 1) height = 400;
 
-    if (_searchLists.length == 0 && !_nothing) {
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'female', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'male', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'tag', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'lang', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'series', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'artist', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'group', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'uploader', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'character', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'type', 0));
-      _searchLists.add(Tuple3<String, String, int>('prefix', 'class', 0));
+    if (_searchLists.isEmpty && !_nothing) {
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'female'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'male'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'tag'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'lang'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'series'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'artist'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'group'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'uploader'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'character'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'type'), 0));
+      _searchLists.add(Tuple2<DisplayedTag, int>(
+          DisplayedTag(group: 'prefix', name: 'class'), 0));
     }
 
     return AlertDialog(
-      insetPadding: EdgeInsets.all(16),
-      contentPadding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+      insetPadding: const EdgeInsets.all(16),
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       content: Stack(
-        overflow: Overflow.visible,
+        clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: <Widget>[
           SizedBox(
@@ -69,43 +80,41 @@ class _TagSelectorDialogState extends State<TagSelectorDialog> {
               // mainAxisAlignment: MainAxisAlignment.end,
               children: <Widget>[
                 ListTile(
-                  contentPadding: EdgeInsets.all(0),
+                  contentPadding: const EdgeInsets.all(0),
                   leading: Text('${Translations.of(context).trans('tag')}:'),
                   title: TextField(
                     controller: _searchController,
+                    minLines: 1,
+                    maxLines: 3,
                     onChanged: (String str) async {
                       await searchProcess(str, _searchController.selection);
                     },
                   ),
                 ),
                 Expanded(
-                  child: _searchLists.length == 0 || _nothing
+                  child: _searchLists.isEmpty || _nothing
                       ? Center(
                           child: Text(_nothing
                               ? Translations.of(context).trans('nosearchresult')
                               : Translations.of(context)
                                   .trans('inputsearchtoken')))
                       : Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 0),
-                          child: FadingEdgeScrollView.fromSingleChildScrollView(
-                            child: SingleChildScrollView(
-                              controller: ScrollController(),
-                              child: Wrap(
-                                spacing: 4.0,
-                                runSpacing: -10.0,
-                                children: _searchLists
-                                    .map((item) => chip(item))
-                                    .toList(),
-                              ),
+                          padding: const EdgeInsets.symmetric(horizontal: 0),
+                          child: SingleChildScrollView(
+                            controller: ScrollController(),
+                            child: Wrap(
+                              spacing: 4.0,
+                              runSpacing: -10.0,
+                              children: _searchLists
+                                  .map((item) => chip(item))
+                                  .toList(),
                             ),
-                            gradientFractionOnEnd: 0.1,
-                            gradientFractionOnStart: 0.1,
                           ),
                         ),
                 ),
                 widget.what == 'include'
                     ? Text(Translations.of(context).trans('tagmsgdefault'),
-                        style: TextStyle(fontSize: 14.0))
+                        style: const TextStyle(fontSize: 14.0))
                     : Container()
               ],
             ),
@@ -113,17 +122,21 @@ class _TagSelectorDialogState extends State<TagSelectorDialog> {
         ],
       ),
       actions: <Widget>[
-        new RaisedButton(
-          color: Settings.majorColor,
-          child: new Text(Translations.of(context).trans('ok')),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            primary: Settings.majorColor,
+          ),
+          child: Text(Translations.of(context).trans('ok')),
           onPressed: () {
             Navigator.pop(
                 context, Tuple2<int, String>(1, _searchController.text));
           },
         ),
-        new RaisedButton(
-          color: Settings.majorColor,
-          child: new Text(Translations.of(context).trans('cancel')),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            primary: Settings.majorColor,
+          ),
+          child: Text(Translations.of(context).trans('cancel')),
           onPressed: () {
             Navigator.pop(
                 context, Tuple2<int, String>(0, _searchController.text));
@@ -133,16 +146,15 @@ class _TagSelectorDialogState extends State<TagSelectorDialog> {
     );
   }
 
-  List<Tuple3<String, String, int>> _searchLists =
-      List<Tuple3<String, String, int>>();
+  List<Tuple2<DisplayedTag, int>> _searchLists = <Tuple2<DisplayedTag, int>>[];
 
-  TextEditingController _searchController;
-  int _insertPos, _insertLength;
-  String _searchText;
+  late final TextEditingController _searchController;
+  int? _insertPos, _insertLength;
+  String? _searchText;
   bool _nothing = false;
-  bool _tagTranslation = false;
-  bool _showCount = true;
-  int _searchResultMaximum = 60;
+  final bool _tagTranslation = false;
+  final bool _showCount = true;
+  final int _searchResultMaximum = 60;
 
   Future<void> searchProcess(String target, TextSelection selection) async {
     _nothing = false;
@@ -181,7 +193,7 @@ class _TagSelectorDialogState extends State<TagSelectorDialog> {
     final result = (await HitomiManager.queryAutoComplete(token))
         .take(_searchResultMaximum)
         .toList();
-    if (result.length == 0) _nothing = true;
+    if (result.isEmpty) _nothing = true;
     setState(() {
       _searchLists = result;
     });
@@ -189,72 +201,82 @@ class _TagSelectorDialogState extends State<TagSelectorDialog> {
 
   // Create tag-chip
   // group, name, counts
-  Widget chip(Tuple3<String, String, int> info) {
-    var tagRaw = info.item2;
+  Widget chip(Tuple2<DisplayedTag, int> info) {
+    var tagDisplayed = info.item1.name!.split(':').last;
     var count = '';
-    var color = Colors.grey;
+    Color color = Colors.grey;
 
     if (_tagTranslation) // Korean
-      tagRaw =
-          HitomiManager.mapSeries2Kor(HitomiManager.mapTag2Kor(info.item2));
+      tagDisplayed = info.item1.getTranslated();
 
-    if (info.item3 > 0 && _showCount) count = ' (${info.item3})';
+    if (info.item2 > 0 && _showCount) count = ' (${info.item2})';
 
-    if (info.item1 == 'female')
+    if (info.item1.group == 'tag' && info.item1.name!.startsWith('female:'))
       color = Colors.pink;
-    else if (info.item1 == 'male')
+    else if (info.item1.group == 'tag' && info.item1.name!.startsWith('male:'))
       color = Colors.blue;
-    else if (info.item1 == 'prefix') color = Colors.orange;
+    else if (info.item1.group == 'prefix')
+      color = Colors.orange;
+    else if (info.item1.group == 'language')
+      color = Colors.teal;
+    else if (info.item1.group == 'series')
+      color = Colors.cyan;
+    else if (info.item1.group == 'artist' || info.item1.group == 'group')
+      color = Colors.green.withOpacity(0.6);
+    else if (info.item1.group == 'type') color = Colors.orange;
 
     var fc = RawChip(
-      labelPadding: EdgeInsets.all(0.0),
+      labelPadding: const EdgeInsets.all(0.0),
       avatar: CircleAvatar(
         backgroundColor: Colors.grey.shade600,
-        child: Text(info.item1[0].toUpperCase()),
+        child: Text(info.item1.group == 'tag' &&
+                (info.item1.name!.startsWith('female:') ||
+                    info.item1.name!.startsWith('male:'))
+            ? info.item1.name![0].toUpperCase()
+            : info.item1.group![0].toUpperCase()),
       ),
       label: Text(
-        ' ' + tagRaw + count,
-        style: TextStyle(
+        ' $tagDisplayed$count',
+        style: const TextStyle(
           color: Colors.white,
         ),
       ),
       backgroundColor: color,
       elevation: 6.0,
       shadowColor: Colors.grey[60],
-      padding: EdgeInsets.all(6.0),
+      padding: const EdgeInsets.all(6.0),
       onPressed: () async {
         // Insert text to cursor.
-        if (info.item1 != 'prefix') {
-          var insert = info.item2.replaceAll(' ', '_');
-          if (info.item1 != 'female' && info.item1 != 'male')
-            insert = info.item1 + ':' + insert;
+        if (info.item1.group != 'prefix') {
+          var insert = (info.item1.group == 'tag' &&
+                      (info.item1.name!.startsWith('female') ||
+                          info.item1.name!.startsWith('male'))
+                  ? info.item1.name
+                  : info.item1.getTag())!
+              .replaceAll(' ', '_');
 
-          _searchController.text = _searchText.substring(0, _insertPos) +
+          _searchController.text = _searchText!.substring(0, _insertPos) +
               insert +
-              _searchText.substring(
-                  _insertPos + _insertLength, _searchText.length);
+              _searchText!
+                  .substring(_insertPos! + _insertLength!, _searchText!.length);
           _searchController.selection = TextSelection(
-            baseOffset: _insertPos + insert.length,
-            extentOffset: _insertPos + insert.length,
+            baseOffset: _insertPos! + insert.length,
+            extentOffset: _insertPos! + insert.length,
           );
         } else {
           var offset = _searchController.selection.baseOffset;
           if (offset != -1) {
-            _searchController.text = _searchController.text
-                    .substring(0, _searchController.selection.base.offset) +
-                info.item2 +
-                ': ' +
-                _searchController.text
-                    .substring(_searchController.selection.base.offset);
+            _searchController.text =
+                '${_searchController.text.substring(0, _searchController.selection.base.offset)}${info.item1.name!}:${_searchController.text.substring(_searchController.selection.base.offset)}';
             _searchController.selection = TextSelection(
-              baseOffset: offset + info.item2.length + 1,
-              extentOffset: offset + info.item2.length + 1,
+              baseOffset: offset + info.item1.name!.length + 1,
+              extentOffset: offset + info.item1.name!.length + 1,
             );
           } else {
-            _searchController.text = info.item2 + ': ';
+            _searchController.text = '${info.item1.name!}:';
             _searchController.selection = TextSelection(
-              baseOffset: info.item2.length + 1,
-              extentOffset: info.item2.length + 1,
+              baseOffset: info.item1.name!.length + 1,
+              extentOffset: info.item1.name!.length + 1,
             );
           }
           await searchProcess(

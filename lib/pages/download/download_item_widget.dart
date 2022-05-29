@@ -1,40 +1,76 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:isolate';
-import 'dart:ui';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:extended_image/extended_image.dart';
 import 'package:flare_flutter/flare_actor.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:path/path.dart';
+import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:provider/provider.dart';
+import 'package:tuple/tuple.dart';
 import 'package:violet/component/downloadable.dart';
-import 'package:violet/component/downloadable.dart' as violetd;
-import 'package:violet/locale.dart';
-import 'package:violet/pages/download/builtin_downloader.dart';
-import 'package:violet/pages/download/flutter_downloader_downloader.dart';
-import 'package:violet/settings.dart';
+import 'package:violet/component/hentai.dart';
+import 'package:violet/component/hitomi/hitomi.dart';
+import 'package:violet/database/user/bookmark.dart';
 import 'package:violet/database/user/download.dart';
+import 'package:violet/database/user/record.dart';
+import 'package:violet/locale/locale.dart';
+import 'package:violet/model/article_info.dart';
+import 'package:violet/pages/article_info/article_info_page.dart';
+import 'package:violet/pages/download/download_item_menu.dart';
+import 'package:violet/pages/download/download_routine.dart';
+import 'package:violet/pages/viewer/viewer_page.dart';
+import 'package:violet/pages/viewer/viewer_page_provider.dart';
+import 'package:violet/script/script_manager.dart';
+import 'package:violet/settings/settings.dart';
+import 'package:violet/widgets/article_item/image_provider_manager.dart';
+import 'package:violet/widgets/article_item/thumbnail.dart';
+import 'package:violet/widgets/toast.dart';
 
-class DownloadItemWidget extends StatefulWidget {
-  final double width;
-  final DownloadItemModel item;
-  final bool download;
+class DownloadListItem {
+  bool addBottomPadding;
+  bool showDetail;
+  double width;
 
-  DownloadItemWidget({
-    this.width,
-    this.item,
-    this.download,
+  DownloadListItem({
+    required this.addBottomPadding,
+    required this.showDetail,
+    required this.width,
   });
-
-  @override
-  _DownloadItemWidgetState createState() => _DownloadItemWidgetState();
 }
 
-class _DownloadItemWidgetState extends State<DownloadItemWidget> {
+typedef DownloadListItemCallback = void Function(DownloadListItem);
+typedef DownloadListItemCallbackCallback = void Function(
+    DownloadListItemCallback);
+
+class DownloadItemWidget extends StatefulWidget {
+  // final double width;
+  final DownloadItemModel item;
+  final DownloadListItem initialStyle;
+  final bool download;
+  final VoidCallback refeshCallback;
+
+  const DownloadItemWidget({
+    Key? key,
+    // this.width,
+    required this.item,
+    required this.initialStyle,
+    required this.download,
+    required this.refeshCallback,
+  }) : super(key: key);
+
+  @override
+  State<DownloadItemWidget> createState() => DownloadItemWidgetState();
+}
+
+class DownloadItemWidgetState extends State<DownloadItemWidget>
+    with AutomaticKeepAliveClientMixin {
+  @override
   bool get wantKeepAlive => true;
   double scale = 1.0;
   String fav = '';
@@ -48,201 +84,276 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
   int errorFileCount = 0;
   String downloadSpeed = ' KB/S';
   bool once = false;
+  bool recoveryMode = false;
+  late double thisWidth, thisHeight;
+  late DownloadListItem style;
+  bool isLastestRead = false;
+  int latestReadPage = 0;
+  late final FToast fToast;
+
+  bool downloaded = false;
 
   @override
   void initState() {
     super.initState();
+    downloaded = widget.download;
+
+    fToast = FToast();
+    fToast.init(context);
 
     if (ExtractorManager.instance.existsExtractor(widget.item.url())) {
       var extractor = ExtractorManager.instance.getExtractor(widget.item.url());
       if (extractor != null) fav = extractor.fav();
     }
 
-    Future.delayed(Duration(milliseconds: 500)).then((value) async {
+    _styleCallback(widget.initialStyle);
+
+    _checkLastRead();
+    _downloadProcedure();
+  }
+
+  _checkLastRead() {
+    User.getInstance().then((value) => value.getUserLog().then((value) async {
+          var x = value.where((e) =>
+              e.articleId() == widget.item.url() &&
+              e.lastPage() != null &&
+              e.lastPage()! > 1 &&
+              DateTime.parse(e.datetimeStart())
+                      .difference(DateTime.now())
+                      .inDays <
+                  31);
+          if (x.isEmpty) return;
+          _shouldReload = true;
+          setState(() {
+            isLastestRead = true;
+            latestReadPage = x.first.lastPage()!;
+          });
+        }));
+  }
+
+  _styleCallback(DownloadListItem item) {
+    style = item;
+
+    thisWidth = item.showDetail
+        ? item.width - 16
+        : item.width - (item.addBottomPadding ? 100 : 0);
+    thisHeight = item.showDetail
+        ? 130.0
+        : item.addBottomPadding
+            ? 500.0
+            : item.width * 4 / 3;
+
+    setState(() {});
+  }
+
+  _downloadProcedure() {
+    Future.delayed(const Duration(milliseconds: 500)).then((value) async {
       if (once) return;
       once = true;
+      // var downloader = await BuiltinDownloader.getInstance();
 
-      var result = Map<String, dynamic>.from(widget.item.result);
+      var routine = DownloadRoutine(
+          widget.item,
+          () => setState(() {}),
+          () => setState(() {
+                _shouldReload = true;
+              }));
 
-      if (widget.item.state() != 1) {
-        if (widget.item.state() == 2 || widget.item.state() == 3) {
-          result['State'] = 6;
-          widget.item.result = result;
-          await widget.item.update();
-          setState(() {});
-          return;
-        }
+      if (!await routine.checkValidState() || !await routine.checkValidUrl())
+        return;
+      await routine.selectExtractor();
+
+      if (!downloaded) {
+        await routine.setToStop();
         return;
       }
 
-      // Check valid url
-      if (!ExtractorManager.instance.existsExtractor(widget.item.url())) {
-        result['State'] = 8;
-        widget.item.result = result;
-        await widget.item.update();
-        setState(() {});
-        return;
-      }
+      await routine.createTasks(
+        progressCallback: (cur, max) async {
+          setState(() {
+            this.cur = cur;
+            if (this.max < max) this.max = max;
+          });
+        },
+      );
 
-      // Choose Extractor
-      var extractor = ExtractorManager.instance.getExtractor(widget.item.url());
-      result['State'] = 2;
-      result['Extractor'] = extractor.name();
-      widget.item.result = result;
-      await widget.item.update();
-      setState(() {});
+      if (await routine.checkNothingToDownload()) return;
 
-      if (!widget.download) {
-        result['State'] = 6;
-        widget.item.result = result;
-        await widget.item.update();
-        setState(() {});
-        return;
-      }
+      downloadTotalFileCount = routine.tasks!.length;
 
-      while (true) {
-        while (!BuiltinDownloader.getInstance().hasDownloadSlot())
-          await Future.delayed(Duration(milliseconds: 500));
-        if (await BuiltinDownloader.getInstance().ensureDownload()) break;
-      }
+      await routine.extractFilePath();
 
-      // Login
-      if (extractor.loginRequire()) {
-        if (!extractor.logined()) {
-          if (!await extractor.tryLogin()) {
-            result['State'] = 9;
-            widget.item.result = result;
-            await widget.item.update();
-            setState(() {});
-            return;
-          }
-        }
-      }
-
-      // Extractor
-      List<violetd.DownloadTask> tasks;
-
-      try {
-        tasks = await extractor.createTask(
-          widget.item.url(),
-          GeneralDownloadProgress(
-            simpleInfoCallback: (info) async {
-              result['Info'] = info;
-              widget.item.result = result;
-              await widget.item.update();
-              setState(() {});
-            },
-            thumbnailCallback: (url, header) async {
-              result['Thumbnail'] = url;
-              result['ThumbnailHeader'] = header;
-              widget.item.result = result;
-              await widget.item.update();
-              setState(() {});
-            },
-            progressCallback: (cur, max) async {
-              setState(() {
-                this.cur = cur;
-                if (this.max < max) this.max = max;
-              });
-            },
-          ),
-        );
-      } catch (e) {
-        result['State'] = 7;
-        widget.item.result = result;
-        await widget.item.update();
-        setState(() {});
-        return;
-      }
-
-      if (tasks == null || tasks.length == 0) {
-        result['State'] = 11;
-        widget.item.result = result;
-        await widget.item.update();
-        setState(() {});
-        return;
-      }
-
-      // Download
-      var _timer = new Timer.periodic(Duration(seconds: 1), (Timer timer) {
+      var timer =
+          Timer.periodic(const Duration(milliseconds: 100), (Timer timer) {
         setState(() {
           if (downloadSec / 1024 < 500.0)
-            downloadSpeed = (downloadSec / 1024).toStringAsFixed(1) + " KB/S";
+            downloadSpeed = '${(downloadSec / 1024).toStringAsFixed(1)} KB/S';
           else
             downloadSpeed =
-                (downloadSec / 1024 / 1024).toStringAsFixed(1) + " MB/S";
+                '${(downloadSec / 1024 / 1024).toStringAsFixed(1)} MB/S';
           downloadSec = 0;
         });
       });
-      // var downloader = FlutterDonwloadDonwloader.getInstance();
-      var downloader = BuiltinDownloader.getInstance();
-      await downloader.addTasks(tasks.map((e) {
-        e.downloadPath = join(Settings.downloadBasePath,
-            e.format.formatting(extractor.defaultFormat()));
 
-        e.startCallback = () {};
-        e.completeCallback = () {
-          downloadedFileCount++;
-        };
+      if (!recoveryMode) {
+        await routine.appendDownloadTasks(
+          completeCallback: () {
+            downloadedFileCount++;
+          },
+          downloadCallback: (byte) {
+            download += byte;
+            downloadSec += byte;
+          },
+          errorCallback: (err) {
+            downloadedFileCount++;
+            errorFileCount++;
+          },
+        );
 
-        e.sizeCallback = (byte) {};
-        e.downloadCallback = (byte) {
-          download += byte;
-          downloadSec += byte;
-        };
-
-        e.errorCallback = (err) {
-          downloadedFileCount++;
-          errorFileCount++;
-        };
-
-        return e;
-      }).toList());
-      downloadTotalFileCount = tasks.length;
-      result['State'] = 3;
-      widget.item.result = result;
-      await widget.item.update();
-      setState(() {});
-
-      // Wait for download complete
-      while (downloadTotalFileCount != downloadedFileCount) {
-        await Future.delayed(Duration(milliseconds: 500));
+        // Wait for download complete
+        while (downloadTotalFileCount != downloadedFileCount) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      } else {
+        downloadedFileCount = downloadTotalFileCount;
       }
-      _timer.cancel();
 
-      await BuiltinDownloader.getInstance().returnDownload();
+      const maxRetryCount = 20;
+      var retryCount = 0;
 
-      // Postprocess
+      // retry download when file is invalid or downloaded fail.
+      while (retryCount < maxRetryCount) {
+        var invalidFiles = await routine.checkDownloadFiles();
 
-      // Complete!
-      result['State'] = 0;
-      widget.item.result = result;
-      await widget.item.update();
-      setState(() {});
+        if (invalidFiles.isEmpty || invalidFiles.length == errorFileCount)
+          break;
+
+        errorFileCount = 0;
+        retryCount += 1;
+
+        downloadedFileCount -= invalidFiles.length;
+
+        await routine.retryInvalidDownloadFiles(
+          invalidFiles,
+          completeCallback: () {
+            downloadedFileCount++;
+          },
+          downloadCallback: (byte) {
+            download += byte;
+            downloadSec += byte;
+          },
+          errorCallback: (err) {
+            downloadedFileCount++;
+            errorFileCount++;
+          },
+        );
+
+        while (downloadTotalFileCount != downloadedFileCount) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+
+      timer.cancel();
+
+      await routine.setDownloadComplete();
+
+      recoveryMode = false;
+
+      fToast.showToast(
+        child: ToastWrapper(
+          isCheck: true,
+          isWarning: false,
+          icon: Icons.download,
+          msg:
+              '${widget.item.info()!.split('[')[1].split(']').first}${Translations.of(context).trans('download')} ${Translations.of(context).trans('complete')}',
+        ),
+        gravity: ToastGravity.BOTTOM,
+        toastDuration: const Duration(seconds: 4),
+      );
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    double ww = widget.width - 16;
-    double hh = 130.0;
+    super.build(context);
 
     return GestureDetector(
       child: SizedBox(
-        width: ww,
-        height: hh,
+        width: thisWidth,
+        height: thisHeight,
         child: AnimatedContainer(
           // alignment: FractionalOffset.center,
           curve: Curves.easeInOut,
-          duration: Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 300),
           // padding: EdgeInsets.all(pad),
           transform: Matrix4.identity()
-            ..translate(ww / 2, hh / 2)
+            ..translate(thisWidth / 2, thisHeight / 2)
             ..scale(scale)
-            ..translate(-ww / 2, -hh / 2),
+            ..translate(-thisWidth / 2, -thisHeight / 2),
           child: buildBody(),
         ),
       ),
+      onLongPress: () async {
+        setState(() {
+          scale = 1.0;
+        });
+
+        var v = await showDialog(
+          context: context,
+          builder: (BuildContext context) => const DownloadImageMenu(),
+        );
+
+        if (v == -1) {
+          // Delete
+          if (widget.item.state() == 0) {
+            for (var file in widget.item.rawFiles()) {
+              if (await File(file).exists()) await File(file).delete();
+            }
+          }
+          await widget.item.delete();
+          (await Download.getInstance()).refresh();
+          widget.refeshCallback();
+        } else if (v == 2) {
+          // Copy Url
+          Clipboard.setData(ClipboardData(text: widget.item.url()));
+          fToast.showToast(
+            child: const ToastWrapper(
+              isCheck: true,
+              isWarning: false,
+              msg: 'URL Copied!',
+            ),
+            gravity: ToastGravity.BOTTOM,
+            toastDuration: const Duration(seconds: 4),
+          );
+        } else if (v == 1) {
+          _retry();
+        } else if (v == 3) {
+          _recovery();
+        }
+      },
+      onTap: () async {
+        if (widget.item.state() == 0 && widget.item.files() != null) {
+          await (await User.getInstance())
+              .insertUserLog(int.tryParse(widget.item.url()) ?? -1, 0);
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (context) {
+                return Provider<ViewerPageProvider>.value(
+                    value: ViewerPageProvider(
+                      uris: widget.item.filesWithoutThumbnail(),
+                      useFileSystem: true,
+                      id: int.tryParse(widget.item.url()) ?? -1,
+                      title: widget.item.info()!,
+                    ),
+                    child: const ViewerPage());
+              },
+            ),
+          );
+        }
+      },
       onTapDown: (details) {
         setState(() {
           scale = 0.95;
@@ -253,46 +364,215 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
           scale = 1.0;
         });
       },
+      onTapCancel: () {
+        setState(() {
+          scale = 1.0;
+        });
+      },
+      onDoubleTap: () {
+        setState(() {
+          scale = 1.0;
+        });
+        if (int.tryParse(widget.item.url()) != null)
+          _showArticleInfo(int.parse(widget.item.url()));
+      },
     );
+  }
+
+  void _showArticleInfo(int id) async {
+    final height = MediaQuery.of(context).size.height;
+
+    final search = await HentaiManager.idSearch(id.toString());
+    if (search.item1.length != 1) return;
+
+    final qr = search.item1[0];
+
+    HentaiManager.getImageProvider(qr).then((value) async {
+      var thumbnail = await value.getThumbnailUrl();
+      var headers = await value.getHeader(0);
+      ProviderManager.insert(qr.id(), value);
+
+      var isBookmarked =
+          await (await Bookmark.getInstance()).isBookmark(qr.id());
+
+      Provider<ArticleInfo>? cache;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) {
+          return DraggableScrollableSheet(
+            initialChildSize: 400 / height,
+            minChildSize: 400 / height,
+            maxChildSize: 0.9,
+            expand: false,
+            builder: (_, controller) {
+              cache ??= Provider<ArticleInfo>.value(
+                value: ArticleInfo.fromArticleInfo(
+                  queryResult: qr,
+                  thumbnail: thumbnail,
+                  headers: headers,
+                  heroKey: 'zxcvzxcvzxcv',
+                  isBookmarked: isBookmarked,
+                  controller: controller,
+                ),
+                child: const ArticleInfoPage(
+                  key: ObjectKey('asdfasdf'),
+                ),
+              );
+              return cache!;
+            },
+          );
+        },
+      );
+    });
+  }
+
+  _retry() {
+    // Retry
+    var copy = Map<String, dynamic>.from(widget.item.result);
+    copy['State'] = 1;
+    widget.item.result = copy;
+    once = false;
+    downloaded = true;
+    _downloadProcedure();
+    setState(() {
+      _shouldReload = true;
+    });
+  }
+
+  _recovery() {
+    // recovery
+    var copy = Map<String, dynamic>.from(widget.item.result);
+    copy['State'] = 1;
+    widget.item.result = copy;
+    downloaded = true;
+    once = false;
+    recoveryMode = true;
+    _downloadProcedure();
+    setState(() {
+      _shouldReload = true;
+    });
+  }
+
+  retryWhenRequired() {
+    if (widget.item.state() >= 6) _retry();
+  }
+
+  recovery() {
+    if (widget.item.thumbnail() != null &&
+        (widget.item.thumbnail()!.contains('e-hentai') ||
+            widget.item.thumbnail()!.contains('exhentai'))) return;
+    _recovery();
   }
 
   Widget buildBody() {
     return Container(
-      margin: EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: Settings.themeWhat ? Colors.grey.shade800 : Colors.white70,
-        borderRadius: BorderRadius.all(Radius.circular(5)),
-        boxShadow: [
-          BoxShadow(
-            color: Settings.themeWhat
-                ? Colors.grey.withOpacity(0.08)
-                : Colors.grey.withOpacity(0.4),
-            spreadRadius: 5,
-            blurRadius: 7,
-            offset: Offset(0, 3), // changes position of shadow
-          ),
-        ],
-      ),
-      child: Row(
-        children: <Widget>[
-          buildThumbnail(),
-          Expanded(
-            child: buildDetail(),
-          ),
-        ],
-      ),
+      // margin: const EdgeInsets.only(bottom: 6),
+      margin: style.addBottomPadding
+          ? style.showDetail
+              ? const EdgeInsets.only(bottom: 6)
+              : const EdgeInsets.only(bottom: 50)
+          : EdgeInsets.zero,
+      decoration: !Settings.themeFlat
+          ? BoxDecoration(
+              color: style.showDetail
+                  ? Settings.themeWhat
+                      ? Settings.themeBlack
+                          ? const Color(0xFF141414)
+                          : Colors.grey.shade800
+                      : Colors.white70
+                  : Colors.grey.withOpacity(0.3),
+              borderRadius: const BorderRadius.all(Radius.circular(5)),
+              boxShadow: [
+                BoxShadow(
+                  color: Settings.themeWhat
+                      ? Colors.grey.withOpacity(0.08)
+                      : Colors.grey.withOpacity(0.4),
+                  spreadRadius: 5,
+                  blurRadius: 7,
+                  offset: const Offset(0, 3), // changes position of shadow
+                ),
+              ],
+            )
+          : null,
+      color: !Settings.themeFlat || !style.showDetail
+          ? null
+          : Settings.themeWhat
+              ? Colors.black26
+              : Colors.white,
+      child: style.showDetail
+          ? Row(
+              children: <Widget>[
+                buildThumbnail(),
+                Expanded(
+                  child: buildDetail(),
+                ),
+              ],
+            )
+          : buildThumbnail(),
     );
   }
 
+  Widget? _cachedThumbnail;
+  bool _shouldReload = false;
+
+  void thubmanilReload() {
+    _shouldReload = true;
+  }
+
   Widget buildThumbnail() {
+    final height = MediaQuery.of(context).size.width / 3 * 4 / 3;
+    final length = widget.item.filesWithoutThumbnail().length;
+
+    if (_cachedThumbnail == null || _shouldReload) {
+      _shouldReload = false;
+      _cachedThumbnail = widget.item.state() == 0 &&
+              widget.item.rawFiles().isNotEmpty &&
+              File(widget.item.rawFiles().first).existsSync()
+          ? _FileThumbnailWidget(
+              showDetail: style.showDetail,
+              thumbnailPath: widget.item.rawFiles().first,
+              thumbnailTag: (widget.item.thumbnail() ?? '') +
+                  widget.item.dateTime().toString(),
+              usingRawImage: true,
+              height: height,
+            )
+          : _ThumbnailWidget(
+              showDetail: style.showDetail,
+              id: int.tryParse(widget.item.url()) ?? -1,
+              thumbnail: widget.item.thumbnail(),
+              thumbnailTag: (widget.item.thumbnail() ?? '') +
+                  widget.item.dateTime().toString(),
+              thumbnailHeader: widget.item.thumbnailHeader(),
+            );
+    }
+
     return Visibility(
       visible: widget.item.thumbnail() != null,
-      child: _ThumbnailWidget(
-        thumbnail: widget.item.thumbnail(),
-        thumbnailTag:
-            (widget.item.thumbnail() == null ? '' : widget.item.thumbnail()) +
-                widget.item.dateTime().toString(),
-        thumbnailHeader: widget.item.thumbnailHeader(),
+      child: Container(
+        foregroundDecoration: isLastestRead &&
+                length > 0 &&
+                length - latestReadPage <= 2 &&
+                Settings.showArticleProgress
+            ? BoxDecoration(
+                color: Settings.themeWhat
+                    ? Colors.grey.shade800
+                    : Colors.grey.shade300,
+                backgroundBlendMode: BlendMode.saturation,
+              )
+            : null,
+        child: Stack(children: [
+          _cachedThumbnail!,
+          ReadProgressOverlayWidget(
+            imageCount: widget.item.filesWithoutThumbnail().length,
+            latestReadPage: latestReadPage,
+            isLastestRead: isLastestRead,
+          ),
+          PagesOverlayWidget(
+            imageCount: widget.item.filesWithoutThumbnail().length,
+            showDetail: style.showDetail,
+          ),
+        ]),
       ),
     );
   }
@@ -301,73 +581,69 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
     var title = widget.item.url();
 
     if (widget.item.info() != null) {
-      title = widget.item.info();
+      title = widget.item.info()!;
     }
 
     var state = 'None';
     var pp =
-        '${Translations.instance.trans('date')}: ' + widget.item.dateTime();
+        '${Translations.instance!.trans('date')}: ${widget.item.dateTime()!}';
 
     var statecolor = !Settings.themeWhat ? Colors.black : Colors.white;
     var statebold = FontWeight.normal;
 
     switch (widget.item.state()) {
       case 0:
-        state = Translations.instance.trans('complete');
+        state = Translations.instance!.trans('complete');
         break;
       case 1:
-        state = Translations.instance.trans('waitqueue');
-        pp = Translations.instance.trans('progress') +
-            ': ' +
-            Translations.instance.trans('waitdownload');
+        state = Translations.instance!.trans('waitqueue');
+        pp =
+            '${Translations.instance!.trans('progress')}: ${Translations.instance!.trans('waitdownload')}';
         break;
       case 2:
         if (max == 0) {
-          state = Translations.instance.trans('extracting');
-          pp = Translations.instance.trans('progress') +
-              ': ' +
-              Translations.instance
-                  .trans('count')
-                  .replaceAll('%s', cur.toString());
+          state = Translations.instance!.trans('extracting');
+          pp =
+              '${Translations.instance!.trans('progress')}: ${Translations.instance!.trans('count').replaceAll('%s', cur.toString())}';
         } else {
-          state = Translations.instance.trans('extracting') + '[$cur/$max]';
-          pp = Translations.instance.trans('progress') + ': ';
+          state = '${Translations.instance!.trans('extracting')}[$cur/$max]';
+          pp = '${Translations.instance!.trans('progress')}: ';
         }
         break;
 
       case 3:
-        state =
-            '[$downloadedFileCount/$downloadTotalFileCount] ($downloadSpeed ${(download / 1024.0 / 1024.0).toStringAsFixed(1)} MB)';
-        // state = '[$downloadedFileCount/$downloadTotalFileCount]';
-        pp = Translations.instance.trans('progress') + ': ';
+        // state =
+        //     '[$downloadedFileCount/$downloadTotalFileCount] ($downloadSpeed ${(download / 1024.0 / 1024.0).toStringAsFixed(1)} MB)';
+        state = '[$downloadedFileCount/$downloadTotalFileCount]';
+        pp = '${Translations.instance!.trans('progress')}: ';
         break;
 
       case 6:
-        state = Translations.instance.trans('stop');
+        state = Translations.instance!.trans('stop');
         pp = '';
         statecolor = Colors.orange;
         // statebold = FontWeight.bold;
         break;
       case 7:
-        state = Translations.instance.trans('unknownerr');
+        state = Translations.instance!.trans('unknownerr');
         pp = '';
         statecolor = Colors.red;
         // statebold = FontWeight.bold;
         break;
       case 8:
-        state = Translations.instance.trans('urlnotsupport');
+        state = Translations.instance!.trans('urlnotsupport');
         pp = '';
         statecolor = Colors.redAccent;
         // statebold = FontWeight.bold;
         break;
       case 9:
-        state = Translations.instance.trans('tryagainlogin');
+        state = Translations.instance!.trans('tryagainlogin');
         pp = '';
         statecolor = Colors.redAccent;
         // statebold = FontWeight.bold;
         break;
       case 11:
-        state = Translations.instance.trans('nothingtodownload');
+        state = Translations.instance!.trans('nothingtodownload');
         pp = '';
         statecolor = Colors.orangeAccent;
         // statebold = FontWeight.bold;
@@ -375,19 +651,20 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
     }
 
     return AnimatedContainer(
-      margin: EdgeInsets.fromLTRB(8, 4, 4, 4),
-      duration: Duration(milliseconds: 300),
+      margin: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+      duration: const Duration(milliseconds: 300),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(Translations.instance.trans('dinfo') + ': ' + title,
+          Text('${Translations.instance!.trans('dinfo')}: $title',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
           Container(
             height: 2,
           ),
-          Text(Translations.instance.trans('state') + ': ' + state,
+          Text('${Translations.instance!.trans('state')}: $state',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -399,17 +676,17 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
               ? Text(pp,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 15))
+                  style: const TextStyle(fontSize: 15))
               : Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(pp,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 15)),
+                        style: const TextStyle(fontSize: 15)),
                     Expanded(
                       child: Padding(
-                        padding: EdgeInsets.only(right: 16),
+                        padding: const EdgeInsets.only(right: 16),
                         child: LinearProgressIndicator(
                           value: downloadedFileCount / downloadTotalFileCount,
                           minHeight: 18,
@@ -427,15 +704,8 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
                 children: [
                   Row(children: <Widget>[
                     Padding(
-                      padding: EdgeInsets.fromLTRB(0, 0, 0, 4),
-                      child: fav != '' && fav != null
-                          ? CachedNetworkImage(
-                              imageUrl: fav,
-                              width: 25,
-                              height: 25,
-                              fadeInDuration: Duration(microseconds: 500),
-                              fadeInCurve: Curves.easeIn)
-                          : Container(),
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+                      child: Container(),
                     ),
                   ]),
                 ],
@@ -449,63 +719,192 @@ class _DownloadItemWidgetState extends State<DownloadItemWidget> {
 }
 
 class _ThumbnailWidget extends StatelessWidget {
-  final String thumbnail;
-  final String thumbnailHeader;
-  final String thumbnailTag;
+  final String? thumbnail;
+  final String? thumbnailHeader;
+  final String? thumbnailTag;
+  final bool showDetail;
+  final int? id;
 
-  _ThumbnailWidget({
-    this.thumbnail,
-    this.thumbnailHeader,
-    this.thumbnailTag,
+  const _ThumbnailWidget({
+    required this.thumbnail,
+    required this.thumbnailHeader,
+    required this.thumbnailTag,
+    required this.showDetail,
+    required this.id,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 100,
+      width: showDetail ? 100 : double.infinity,
       child: thumbnail != null
           ? ClipRRect(
-              borderRadius: BorderRadius.horizontal(left: Radius.circular(5.0)),
+              borderRadius: showDetail
+                  ? const BorderRadius.horizontal(left: Radius.circular(5.0))
+                  : const BorderRadius.all(Radius.circular(5.0)),
               child: _thumbnailImage(),
             )
-          : FlareActor(
-              "assets/flare/Loading2.flr",
-              alignment: Alignment.center,
-              fit: BoxFit.fitHeight,
-              animation: "Alarm",
-            ),
+          : _getLoadingAnimation(),
     );
   }
 
   Widget _thumbnailImage() {
-    Map<String, String> headers = {};
-    if (thumbnailHeader != null) {
-      var hh = jsonDecode(thumbnailHeader) as Map<String, dynamic>;
-      hh.entries.forEach((element) {
-        headers[element.key] = element.value as String;
-      });
+    if (id == null) {
+      Map<String, String> headers = {};
+      if (thumbnailHeader != null) {
+        var hh = jsonDecode(thumbnailHeader!) as Map<String, dynamic>;
+        hh.entries.forEach((element) {
+          headers[element.key] = element.value as String;
+        });
+      }
+      return Hero(
+        tag: thumbnailTag!,
+        child: CachedNetworkImage(
+          imageUrl: thumbnail!,
+          fit: BoxFit.cover,
+          httpHeaders: headers,
+          imageBuilder: (context, imageProvider) => Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+            ),
+            child: Container(),
+          ),
+          placeholder: (b, c) {
+            return _getLoadingAnimation();
+          },
+        ),
+      );
+    } else {
+      return FutureBuilder(
+        future: HitomiManager.getImageList(id.toString()).then((value) async {
+          var header =
+              await ScriptManager.runHitomiGetHeaderContent(id.toString());
+          return Tuple2(value.item1[0], header);
+        }),
+        builder: (context,
+            AsyncSnapshot<Tuple2<String, Map<String, String>>> snapshot) {
+          if (!snapshot.hasData || snapshot.data == null) {
+            return _getLoadingAnimation();
+          }
+
+          return Hero(
+            tag: thumbnailTag!,
+            child: CachedNetworkImage(
+              imageUrl: snapshot.data!.item1,
+              fit: BoxFit.cover,
+              httpHeaders: snapshot.data!.item2,
+              imageBuilder: (context, imageProvider) => Container(
+                decoration: BoxDecoration(
+                  image:
+                      DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                ),
+                child: Container(),
+              ),
+              placeholder: (b, c) {
+                return _getLoadingAnimation();
+              },
+            ),
+          );
+        },
+      );
     }
+  }
+
+  Widget _getLoadingAnimation() {
+    if (!Settings.simpleItemWidgetLoadingIcon) {
+      return const FlareActor(
+        'assets/flare/Loading2.flr',
+        alignment: Alignment.center,
+        fit: BoxFit.fitHeight,
+        animation: 'Alarm',
+      );
+    } else {
+      return Center(
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: CircularProgressIndicator(
+            color: Settings.majorColor.withAlpha(150),
+          ),
+        ),
+      );
+    }
+  }
+}
+
+class _FileThumbnailWidget extends StatelessWidget {
+  final String thumbnailPath;
+  final String thumbnailTag;
+  final bool showDetail;
+  final bool usingRawImage;
+  final double height;
+
+  const _FileThumbnailWidget({
+    required this.thumbnailPath,
+    required this.thumbnailTag,
+    required this.showDetail,
+    this.usingRawImage = false,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: showDetail ? 100 : double.infinity,
+      child: thumbnailPath != null
+          ? ClipRRect(
+              borderRadius: showDetail
+                  ? const BorderRadius.horizontal(left: Radius.circular(5.0))
+                  : const BorderRadius.all(Radius.circular(5.0)),
+              child: _thumbnailImage(),
+            )
+          : _getLoadingAnimation(),
+    );
+  }
+
+  Widget _thumbnailImage() {
     return Hero(
       tag: thumbnailTag,
-      child: CachedNetworkImage(
-        imageUrl: thumbnail,
+      child: ExtendedImage.file(
+        File(thumbnailPath),
         fit: BoxFit.cover,
-        httpHeaders: headers,
-        imageBuilder: (context, imageProvider) => Container(
-          decoration: BoxDecoration(
-            image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
-          ),
-          child: Container(),
-        ),
-        placeholder: (b, c) {
-          return FlareActor(
-            "assets/flare/Loading2.flr",
-            alignment: Alignment.center,
-            fit: BoxFit.fitHeight,
-            animation: "Alarm",
+        cacheWidth: usingRawImage ? height.toInt() * 2 : null,
+        loadStateChanged: (state) {
+          if (state.extendedImageLoadState == LoadState.loading ||
+              state.extendedImageLoadState == LoadState.failed) {
+            return _getLoadingAnimation();
+          }
+
+          return Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                  image: state.imageProvider, fit: BoxFit.cover),
+            ),
+            child: Container(),
           );
         },
       ),
     );
+  }
+
+  Widget _getLoadingAnimation() {
+    if (!Settings.simpleItemWidgetLoadingIcon) {
+      return const FlareActor(
+        'assets/flare/Loading2.flr',
+        alignment: Alignment.center,
+        fit: BoxFit.fitHeight,
+        animation: 'Alarm',
+      );
+    } else {
+      return Center(
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: CircularProgressIndicator(
+            color: Settings.majorColor.withAlpha(150),
+          ),
+        ),
+      );
+    }
   }
 }

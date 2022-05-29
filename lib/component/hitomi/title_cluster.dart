@@ -1,16 +1,16 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
+import 'package:collection/collection.dart';
 import 'package:kdtree/kdtree.dart';
 import 'package:violet/algorithm/disjointset.dart';
 import 'package:violet/algorithm/distance.dart';
-import "package:collection/collection.dart";
 
 class Idata {
   String title;
   int index;
 
-  Idata({this.title, this.index});
+  Idata({required this.title, required this.index});
 
   int compareTo(Idata id) {
     return title.compareTo(id.title);
@@ -20,6 +20,7 @@ class Idata {
     return title.compareTo(id.title) < 0;
   }
 
+  @override
   String toString() {
     return title;
   }
@@ -49,10 +50,10 @@ class HitomiTitleCluster {
 
   // This function compares and clusters the similarity of titles.
   static List<List<int>> doClustering(List<String> titles) {
-    var ctitles = List<Map<String, Idata>>();
+    var ctitles = <Map<String, Idata>>[];
 
     for (int i = 0; i < titles.length; i++) {
-      var mm = Map<String, Idata>();
+      var mm = <String, Idata>{};
       mm['t'] = Idata(title: titles[i], index: i);
       ctitles.add(mm);
     }
@@ -62,11 +63,11 @@ class HitomiTitleCluster {
 
     if (maxnode > 100) maxnode = 100;
 
-    var groups = List<List<int>>();
+    var groups = <List<int>>[];
     ctitles.forEach((element) {
       var near = tree.nearest(element, maxnode, 8);
 
-      var rr = List<int>();
+      var rr = <int>[];
       near.forEach((element) {
         rr.add(element[0]['t'].index);
       });
@@ -76,7 +77,7 @@ class HitomiTitleCluster {
     });
 
     // Group By Same Lists
-    var gg = groupBy(groups, (x) => x.join(','));
+    var gg = groupBy(groups, (x) => (x as List<int>).join(','));
     var ds = DisjointSet(titles.length);
 
     // Join groups
@@ -87,18 +88,16 @@ class HitomiTitleCluster {
       });
     });
 
-    var join = Map<int, List<int>>();
-    for (int i = 0; i < titles.length; i++)
-    {
+    var join = <int, List<int>>{};
+    for (int i = 0; i < titles.length; i++) {
       var v = ds.find(i);
-      if (!join.containsKey(v))
-        join[v] = List<int>();
-      join[v].add(i);
+      if (!join.containsKey(v)) join[v] = <int>[];
+      join[v]!.add(i);
     }
 
     var result = join.values.toList();
 
-    // result.forEach((element) { 
+    // result.forEach((element) {
     //   print('------------');
     //   element.forEach((element) {
     //     print(titles[element]);

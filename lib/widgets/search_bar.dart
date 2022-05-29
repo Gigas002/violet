@@ -1,17 +1,23 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-class SearchBarSliver implements SliverPersistentHeaderDelegate {
-  SearchBarSliver({this.minExtent, @required this.maxExtent, this.searchBar});
-  final double minExtent;
-  final double maxExtent;
+class AnimatedOpacitySliver implements SliverPersistentHeaderDelegate {
+  AnimatedOpacitySliver({
+    this.searchBar,
+  });
 
-  Widget searchBar;
+  Widget? searchBar;
+
+  @override
+  double get minExtent => 64 + 12;
+
+  @override
+  double get maxExtent => 64 + 12;
 
   @override
   Widget build(
@@ -20,9 +26,9 @@ class SearchBarSliver implements SliverPersistentHeaderDelegate {
       fit: StackFit.expand,
       children: [
         AnimatedOpacity(
-          child: searchBar,
           opacity: 1.0 - max(0.0, shrinkOffset - 20) / (maxExtent - 20),
-          duration: Duration(milliseconds: 100),
+          duration: const Duration(milliseconds: 100),
+          child: searchBar,
         )
       ],
     );
@@ -34,8 +40,15 @@ class SearchBarSliver implements SliverPersistentHeaderDelegate {
   }
 
   @override
-  FloatingHeaderSnapConfiguration get snapConfiguration => null;
+  FloatingHeaderSnapConfiguration? get snapConfiguration => null;
 
   @override
-  OverScrollHeaderStretchConfiguration get stretchConfiguration => null;
+  OverScrollHeaderStretchConfiguration? get stretchConfiguration => null;
+
+  @override
+  PersistentHeaderShowOnScreenConfiguration? get showOnScreenConfiguration =>
+      null;
+
+  @override
+  TickerProvider? get vsync => null;
 }

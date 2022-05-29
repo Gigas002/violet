@@ -1,21 +1,27 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flare_flutter/flare_actor.dart';
 import 'package:flutter/material.dart';
-import 'package:violet/settings.dart';
+import 'package:violet/settings/settings.dart';
 
 class ThumbnailViewPage extends StatefulWidget {
   final String thumbnail;
   final String heroKey;
   final Map<String, String> headers;
-  final Size size;
+  final Size? size;
 
-  ThumbnailViewPage({this.thumbnail, this.headers, this.size, this.heroKey});
+  const ThumbnailViewPage({
+    Key? key,
+    required this.thumbnail,
+    required this.headers,
+    this.size,
+    required this.heroKey,
+  }) : super(key: key);
 
   @override
-  _ThumbnailViewPageState createState() => _ThumbnailViewPageState();
+  State<ThumbnailViewPage> createState() => _ThumbnailViewPageState();
 }
 
 class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
@@ -36,7 +42,20 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
   Widget build(BuildContext context) {
     return GestureDetector(
       child: Container(
-        padding: EdgeInsets.all(0),
+        padding: const EdgeInsets.all(0),
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.all(Radius.circular(1)),
+          boxShadow: [
+            BoxShadow(
+              color: Settings.themeWhat
+                  ? Colors.black.withOpacity(0.2)
+                  : Colors.grey.withOpacity(0.2),
+              spreadRadius: 1,
+              blurRadius: 1,
+              offset: const Offset(0, 3), // changes position of shadow
+            ),
+          ],
+        ),
         child: Transform.scale(
           scale: scale,
           child: Column(
@@ -50,29 +69,28 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
                     fit: BoxFit.cover,
                     httpHeaders: widget.headers,
                     placeholder: (b, c) {
-                      return FlareActor(
-                        "assets/flare/Loading2.flr",
-                        alignment: Alignment.center,
-                        fit: BoxFit.fitHeight,
-                        animation: "Alarm",
-                      );
+                      if (!Settings.simpleItemWidgetLoadingIcon) {
+                        return const FlareActor(
+                          'assets/flare/Loading2.flr',
+                          alignment: Alignment.center,
+                          fit: BoxFit.fitHeight,
+                          animation: 'Alarm',
+                        );
+                      } else {
+                        return Center(
+                          child: SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CircularProgressIndicator(
+                              color: Settings.majorColor.withAlpha(150),
+                            ),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ),
               ]),
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.all(Radius.circular(1)),
-          boxShadow: [
-            BoxShadow(
-              color: Settings.themeWhat
-                  ? Colors.black.withOpacity(0.2)
-                  : Colors.grey.withOpacity(0.2),
-              spreadRadius: 1,
-              blurRadius: 1,
-              offset: Offset(0, 3), // changes position of shadow
-            ),
-          ],
         ),
       ),
       onScaleStart: (detail) {
@@ -107,8 +125,8 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
         tapCount++;
         DateTime now = DateTime.now();
         if (currentBackPressTime == null ||
-            now.difference(currentBackPressTime) >
-                Duration(milliseconds: 300)) {
+            now.difference(currentBackPressTime!) >
+                const Duration(milliseconds: 300)) {
           currentBackPressTime = now;
           return;
         }
@@ -125,7 +143,7 @@ class _ThumbnailViewPageState extends State<ThumbnailViewPage> {
   }
 
   int tapCount = 0;
-  double dragStart;
+  double dragStart = 0;
   bool zooming = false;
-  DateTime currentBackPressTime;
+  DateTime? currentBackPressTime;
 }

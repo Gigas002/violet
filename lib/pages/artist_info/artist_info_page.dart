@@ -1,12 +1,18 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 import 'dart:math';
 
 import 'package:auto_animated/auto_animated.dart';
+import 'package:charts_flutter/flutter.dart' as charts;
 import 'package:expandable/expandable.dart';
+import 'package:flare_flutter/flare_actor.dart';
+import 'package:flare_flutter/flare_controls.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:html_unescape/html_unescape_small.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:tuple/tuple.dart';
 import 'package:uuid/uuid.dart';
 import 'package:violet/algorithm/distance.dart';
@@ -14,23 +20,38 @@ import 'package:violet/component/hitomi/hitomi.dart';
 import 'package:violet/component/hitomi/indexs.dart';
 import 'package:violet/component/hitomi/title_cluster.dart';
 import 'package:violet/database/query.dart';
-import 'package:violet/locale.dart';
+import 'package:violet/database/user/bookmark.dart';
+import 'package:violet/locale/locale.dart';
+import 'package:violet/model/article_list_item.dart';
+import 'package:violet/other/dialogs.dart';
 import 'package:violet/pages/artist_info/article_list_page.dart';
 import 'package:violet/pages/artist_info/series_list_page.dart';
 import 'package:violet/pages/artist_info/similar_list_page.dart';
-import 'package:violet/settings.dart';
-import 'package:charts_flutter/flutter.dart' as charts;
+import 'package:violet/pages/segment/platform_navigator.dart';
+import 'package:violet/pages/segment/three_article_panel.dart';
+import 'package:violet/server/community/anon.dart';
+import 'package:violet/settings/settings.dart';
 import 'package:violet/widgets/article_item/article_list_item_widget.dart';
+import 'package:violet/widgets/toast.dart';
 
 class ArtistInfoPage extends StatefulWidget {
   final String artist;
   final bool isGroup;
   final bool isUploader;
+  final bool isSeries;
+  final bool isCharacter;
 
-  ArtistInfoPage({this.artist, this.isGroup, this.isUploader});
+  const ArtistInfoPage({
+    Key? key,
+    required this.artist,
+    this.isGroup = false,
+    this.isUploader = false,
+    this.isSeries = false,
+    this.isCharacter = false,
+  }) : super(key: key);
 
   @override
-  _ArtistInfoPageState createState() => _ArtistInfoPageState();
+  State<ArtistInfoPage> createState() => _ArtistInfoPageState();
 }
 
 class _ArtistInfoPageState extends State<ArtistInfoPage> {
@@ -40,25 +61,65 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
   int maleTags = 0;
   int tags = 0;
   // Artist? Group? Uploader?
-  String prefix;
+  late String prefix;
   // Artist Articles
-  List<QueryResult> cc;
+  late List<QueryResult> cc;
   // Chart component lists
-  List<Tuple2<String, int>> lff = List<Tuple2<String, int>>();
-  List<Tuple2<String, int>> lffOrigin;
+  late List<Tuple2<String, int>> lff = <Tuple2<String, int>>[];
+  late List<Tuple2<String, int>> lffOrigin;
   // Similar Aritsts Info
-  List<Tuple2<String, double>> similars;
-  List<Tuple2<String, double>> similarsAll;
+  late List<Tuple2<String, double>> similars;
+  late List<Tuple2<String, double>> similarsAll;
+  late List<Tuple2<String, double>> relatedCOSSingle;
+  late List<Tuple2<String, double>> relatedCharacterOrSeries;
+  late List<Tuple2<String, double>> relatedCOSSingleAll;
+  late List<Tuple2<String, double>> relatedCharacterOrSeriesAll;
   // Similar Item Lists
-  List<List<QueryResult>> qrs = List<List<QueryResult>>();
+  List<List<QueryResult>> qrs = [];
+  List<List<QueryResult>> qrsCOSSingle = [];
+  List<List<QueryResult>> qrsCharacterOrSeries = [];
   // Title clustering
-  List<List<int>> series;
+  late List<List<int>> series;
+  // Comments
+  List<Tuple3<DateTime, String, String>>? comments;
+
+  bool isBookmarked = false;
+  FlareControls flareController = FlareControls();
+
+  late FToast fToast;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(milliseconds: 100)).then((value) async {
-      cc = await query([widget.artist, widget.isGroup, widget.isUploader]);
+    fToast = FToast();
+    fToast.init(context);
+
+    Future.delayed(const Duration(milliseconds: 100)).then((value) async {
+      //
+      // Check bookmark
+      //
+      var type = widget.isGroup
+          ? 1
+          : widget.isUploader
+              ? 2
+              : widget.isSeries
+                  ? 3
+                  : widget.isCharacter
+                      ? 4
+                      : 0;
+      isBookmarked = await (await Bookmark.getInstance())
+          .isBookmarkArtist(widget.artist, type);
+
+      //
+      //  Get query
+      //
+      cc = await query([
+        widget.artist,
+        widget.isGroup,
+        widget.isUploader,
+        widget.isSeries,
+        widget.isCharacter
+      ]);
 
       //
       //  Title based article clustering
@@ -70,7 +131,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
       //
       //  Statistics
       //
-      var ffstat = Map<String, int>();
+      var ffstat = <String, int>{};
 
       cc.forEach((element) {
         if (element.tags() == null) return;
@@ -86,7 +147,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
             tags += 1;
 
           if (!ffstat.containsKey(element)) ffstat[element] = 0;
-          ffstat[element] += 1;
+          ffstat[element] = ffstat[element]! + 1;
         });
       });
 
@@ -108,6 +169,10 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
         similars = HitomiIndexs.calculateSimilarGroups(widget.artist);
       else if (widget.isUploader)
         similars = HitomiIndexs.calculateSimilarUploaders(widget.artist);
+      else if (widget.isSeries)
+        similars = HitomiIndexs.calculateSimilarSeries(widget.artist);
+      else if (widget.isCharacter)
+        similars = HitomiIndexs.calculateSimilarCharacter(widget.artist);
       else
         similars = HitomiIndexs.calculateSimilarArtists(widget.artist);
 
@@ -117,90 +182,140 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
       prefix = 'artist:';
       if (widget.isGroup)
         prefix = 'group:';
-      else if (widget.isUploader) prefix = 'uploader:';
+      else if (widget.isUploader)
+        prefix = 'uploader:';
+      else if (widget.isSeries)
+        prefix = 'series:';
+      else if (widget.isCharacter) prefix = 'character:';
 
-      var unescape = new HtmlUnescape();
-      for (int i = 0; i < similars.length; i++) {
-        var postfix = similars[i].item1.toLowerCase().replaceAll(' ', '_');
-        if (widget.isUploader) postfix = similars[i].item1;
-        var queryString = HitomiManager.translate2query(prefix +
-            postfix +
-            ' ' +
-            Settings.includeTags +
-            ' ' +
-            Settings.excludeTags
-                .where((e) => e.trim() != '')
-                .map((e) => '-$e')
-                .join(' '));
-        final qm = QueryManager.queryPagination(queryString);
-        qm.itemsPerPage = 10;
+      await querySimilars(similars, prefix, qrs);
 
-        var x = await qm.next();
-        if (x == null || x.length == 0) {
-          qrs.add(List<QueryResult>());
-          continue;
+      if (widget.isCharacter || widget.isSeries) {
+        if (widget.isCharacter) {
+          relatedCharacterOrSeriesAll =
+              HitomiIndexs.calculateRelatedSeriesCharacter(widget.artist);
+          relatedCOSSingleAll = HitomiIndexs.getRelatedSeries(widget.artist);
+        } else {
+          relatedCharacterOrSeriesAll =
+              HitomiIndexs.calculateRelatedCharacterSeries(widget.artist);
+          relatedCOSSingleAll =
+              HitomiIndexs.getRelatedCharacters(widget.artist);
         }
-        var y = [x[0]];
+        relatedCharacterOrSeries = relatedCharacterOrSeriesAll.take(6).toList();
+        relatedCOSSingle = relatedCOSSingleAll.take(6).toList();
 
-        var titles = [unescape.convert((x[0].title() as String).trim())];
-        if (titles[0].contains('Ch.'))
-          titles[0] = titles[0].split('Ch.')[0];
-        else if (titles[0].contains('ch.'))
-          titles[0] = titles[0].split('ch.')[0];
+        await querySimilars(
+          relatedCharacterOrSeries,
+          widget.isCharacter ? 'character:' : 'series:',
+          qrsCharacterOrSeries,
+        );
 
-        for (int i = 1; i < x.length; i++) {
-          var skip = false;
-          var ff = unescape.convert((x[i].title() as String).trim());
-          if (ff.contains('Ch.'))
-            ff = ff.split('Ch.')[0];
-          else if (ff.contains('ch.')) ff = ff.split('ch.')[0];
-          for (int j = 0; j < titles.length; j++) {
-            var tt = titles[j];
-            if (Distance.levenshteinDistanceComparable(
-                    tt.runes.map((e) => e.toString()).toList(),
-                    ff.runes.map((e) => e.toString()).toList()) <
-                3) {
-              skip = true;
-              break;
-            }
-          }
-          if (skip) continue;
-          y.add(x[i]);
-          titles.add(ff.trim());
-        }
-
-        qrs.add(y);
+        await querySimilars(
+          relatedCOSSingle,
+          widget.isCharacter ? 'series:' : 'character:',
+          qrsCOSSingle,
+        );
       }
 
       setState(() {
         qureyLoaded = true;
       });
 
-      Future.delayed(Duration(milliseconds: 300)).then((value) {
+      Future.delayed(const Duration(milliseconds: 300)).then((value) {
         ec.expanded = true;
+        commentAreaEC.expanded = true;
       });
+
+      Future.delayed(const Duration(microseconds: 100))
+          .then((value) async => await readComments());
     });
+  }
+
+  Future<void> readComments() async {
+    var tcomments =
+        (await VioletCommunityAnonymous.getArtistComments((widget.isGroup
+                ? 'group:'
+                : widget.isUploader
+                    ? 'uploader:'
+                    : widget.isSeries
+                        ? 'series:'
+                        : widget.isCharacter
+                            ? 'character:'
+                            : 'artist:') +
+            widget.artist))['result'] as List<dynamic>;
+
+    comments = tcomments
+        .map((e) => Tuple3<DateTime, String, String>(
+            DateTime.parse(e['TimeStamp']), e['UserAppId'], e['Body']))
+        .toList()
+        .reversed
+        .toList();
+
+    if (comments!.isNotEmpty) setState(() {});
+  }
+
+  Future<void> querySimilars(List<Tuple2<String, double>> similars,
+      String prefix, List<List<QueryResult>> qrs) async {
+    var unescape = HtmlUnescape();
+    for (int i = 0; i < similars.length; i++) {
+      var postfix = similars[i].item1.toLowerCase().replaceAll(' ', '_');
+      var queryString = HitomiManager.translate2query(
+          '$prefix$postfix ${Settings.includeTags} ${Settings.excludeTags.where((e) => e.trim() != '').map((e) => '-$e').join(' ')}');
+      final qm = QueryManager.queryPagination(queryString);
+      qm.itemsPerPage = 10;
+
+      var x = await qm.next();
+      if (x == null || x.isEmpty) {
+        qrs.add(<QueryResult>[]);
+        continue;
+      }
+      var y = [x[0]];
+
+      var titles = [unescape.convert((x[0].title() as String).trim())];
+      if (titles[0].contains('Ch.'))
+        titles[0] = titles[0].split('Ch.')[0];
+      else if (titles[0].contains('ch.')) titles[0] = titles[0].split('ch.')[0];
+
+      for (int i = 1; i < x.length; i++) {
+        var skip = false;
+        var ff = unescape.convert((x[i].title() as String).trim());
+        if (ff.contains('Ch.'))
+          ff = ff.split('Ch.')[0];
+        else if (ff.contains('ch.')) ff = ff.split('ch.')[0];
+        for (int j = 0; j < titles.length; j++) {
+          var tt = titles[j];
+          if (Distance.levenshteinDistanceComparable(
+                  tt.runes.map((e) => e.toString()).toList(),
+                  ff.runes.map((e) => e.toString()).toList()) <
+              3) {
+            skip = true;
+            break;
+          }
+        }
+        if (skip) continue;
+        y.add(x[i]);
+        titles.add(ff.trim());
+      }
+
+      qrs.add(y);
+    }
   }
 
   Future<List<QueryResult>> query(dynamic obj) async {
     var artist = obj[0] as String;
     var isGroup = obj[1] as bool;
     var isUploader = obj[2] as bool;
+    var isSeries = obj[3] as bool;
+    var isCharacter = obj[4] as bool;
 
     var query = HitomiManager.translate2query(
-        (isGroup ? 'group:' : isUploader ? 'uploader:' : 'artist:') +
-            '${artist.replaceAll(' ', '_')}' +
-            Settings.includeTags +
-            ' ' +
-            Settings.excludeTags
-                .where((e) => e.trim() != '')
-                .map((e) => '-$e')
-                .join(' '));
+        '${isGroup ? 'group:' : isUploader ? 'uploader:' : isSeries ? 'series:' : isCharacter ? 'character:' : 'artist:'}${artist.replaceAll(' ', '_')} ${Settings.includeTags} ${Settings.excludeTags.where((e) => e.trim() != '').map((e) => '-$e').join(' ')}');
 
     // DateTime dt = DateTime.now();
-    QueryManager qm = await QueryManager.query(query + ' ORDER BY Id DESC');
+    QueryManager qm = await QueryManager.query('$query ORDER BY Id DESC');
     // print((DateTime.now().difference(dt)).inSeconds);
-    return qm.results;
+
+    return qm.results!;
   }
 
   @override
@@ -208,22 +323,34 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
     final width = MediaQuery.of(context).size.width;
     final height =
         MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top;
+    final mediaQuery = MediaQuery.of(context);
     return Container(
-      color: Settings.themeWhat ? Color(0xFF353535) : Colors.grey.shade100,
+      color: Settings.themeWhat
+          ? Settings.themeBlack
+              ? const Color(0xFF141414)
+              : const Color(0xFF353535)
+          : Colors.grey.shade100,
       child: Padding(
         // padding: EdgeInsets.all(0),
-        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+        padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top,
+            bottom: (mediaQuery.padding + mediaQuery.viewInsets).bottom),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
             Card(
               elevation: 5,
-              color:
-                  Settings.themeWhat ? Color(0xFF353535) : Colors.grey.shade100,
+              color: Settings.themeWhat
+                  ? Settings.themeBlack
+                      ? const Color(0xFF141414)
+                      : const Color(0xFF353535)
+                  : Colors.grey.shade100,
               child: SizedBox(
                 width: width - 16,
-                height: height - 16,
+                height: height -
+                    16 -
+                    (mediaQuery.padding + mediaQuery.viewInsets).bottom,
                 child: Container(
                   child: qureyLoaded
                       ? SingleChildScrollView(
@@ -232,16 +359,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                               Container(
                                 height: 16,
                               ),
-                              Text(
-                                  (widget.isGroup
-                                          ? 'Groups: '
-                                          : widget.isUploader
-                                              ? 'Uploader: '
-                                              : 'Artist: ') +
-                                      widget.artist,
-                                  style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold)),
+                              nameArea(),
                               queryResult()
                             ],
                           ),
@@ -251,16 +369,8 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                             Container(
                               height: 16,
                             ),
-                            Text(
-                                (widget.isGroup
-                                        ? 'Groups: '
-                                        : widget.isUploader
-                                            ? 'Uploader: '
-                                            : 'Artist: ') +
-                                    widget.artist,
-                                style: TextStyle(
-                                    fontSize: 20, fontWeight: FontWeight.bold)),
-                            Expanded(
+                            nameArea(),
+                            const Expanded(
                               child: Align(
                                 alignment: Alignment.center,
                                 child: SizedBox(
@@ -281,6 +391,71 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
     );
   }
 
+  Widget nameArea() {
+    return GestureDetector(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: FlareActor(
+              'assets/flare/likeUtsua.flr',
+              animation: isBookmarked ? 'Like' : 'IdleUnlike',
+              controller: flareController,
+            ),
+          ),
+          Text(
+              (widget.isGroup
+                      ? 'Groups: '
+                      : widget.isUploader
+                          ? 'Uploader: '
+                          : widget.isSeries
+                              ? 'Series: '
+                              : widget.isCharacter
+                                  ? 'Character: '
+                                  : 'Artist: ') +
+                  widget.artist,
+              style:
+                  const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        ],
+      ),
+      onTap: () async {
+        isBookmarked = !isBookmarked;
+
+        var type = widget.isGroup
+            ? 1
+            : widget.isUploader
+                ? 2
+                : widget.isSeries
+                    ? 3
+                    : widget.isCharacter
+                        ? 4
+                        : 0;
+
+        fToast.showToast(
+          child: ToastWrapper(
+            isCheck: true,
+            msg:
+                '${widget.artist}${Translations.of(context).trans(isBookmarked ? 'addtobookmark' : 'removetobookmark')}',
+          ),
+          gravity: ToastGravity.BOTTOM,
+          toastDuration: const Duration(seconds: 4),
+        );
+
+        if (!isBookmarked) {
+          await (await Bookmark.getInstance())
+              .unbookmarkArtist(widget.artist, type);
+          flareController.play('Unlike');
+        } else {
+          await (await Bookmark.getInstance())
+              .bookmarkArtist(widget.artist, type);
+          flareController.play('Like');
+        }
+      },
+    );
+  }
+
   bool isExpanded = false;
 
   Widget queryResult() {
@@ -290,9 +465,9 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
             labelStyle: charts.TextStyleSpec(
                 fontSize: isExpanded ? 10 : 14,
                 color: charts.MaterialPalette.white),
-            lineStyle: charts.LineStyleSpec(
+            lineStyle: const charts.LineStyleSpec(
                 color: charts.MaterialPalette.transparent)));
-    var axis2 = charts.NumericAxisSpec(
+    var axis2 = const charts.NumericAxisSpec(
         renderSpec: charts.GridlineRendererSpec(
       labelStyle: charts.TextStyleSpec(
           fontSize: 10, color: charts.MaterialPalette.white),
@@ -301,7 +476,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
       child: Column(
         children: <Widget>[
           Padding(
-            padding: EdgeInsets.fromLTRB(64, 16, 64, 0),
+            padding: const EdgeInsets.fromLTRB(64, 16, 64, 0),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8.0),
               child: Row(
@@ -329,7 +504,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
             ),
           ),
           Container(
-            padding: EdgeInsets.all(4),
+            padding: const EdgeInsets.all(4),
           ),
           InkWell(
             child: SizedBox(
@@ -339,7 +514,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                     : lff.length * 22.0 + 10,
                 child: charts.BarChart(
                   [
-                    new charts.Series<Tuple2<String, int>, String>(
+                    charts.Series<Tuple2<String, int>, String>(
                         id: 'Sales',
                         data: lff,
                         domainFn: (Tuple2<String, int> sales, f) =>
@@ -375,7 +550,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
           ExpandableNotifier(
             controller: ec,
             child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 4.0),
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: ScrollOnExpand(
                 child: ExpandablePanel(
                   theme: ExpandableThemeData(
@@ -383,7 +558,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                           Settings.themeWhat ? Colors.white : Colors.grey,
                       animationDuration: const Duration(milliseconds: 500)),
                   header: Padding(
-                    padding: EdgeInsets.fromLTRB(12, 12, 0, 0),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
                     child: Text(
                         '${Translations.of(context).trans('articles')} (${cc.length})'),
                   ),
@@ -391,22 +566,27 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                     articleArea(),
                     Visibility(
                         visible: cc.length > 6,
-                        child: more(ArticleListPage(
+                        child: more(() => ArticleListPage(
                             cc: cc,
                             name: (widget.isGroup
                                     ? 'Groups: '
                                     : widget.isUploader
                                         ? 'Uploader: '
-                                        : 'Artist: ') +
+                                        : widget.isSeries
+                                            ? 'Series: '
+                                            : widget.isCharacter
+                                                ? 'Character: '
+                                                : 'Artist: ') +
                                 widget.artist)))
                   ]),
+                  collapsed: Container(),
                 ),
               ),
             ),
           ),
           ExpandableNotifier(
             child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 4.0),
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: ScrollOnExpand(
                 child: ExpandablePanel(
                   theme: ExpandableThemeData(
@@ -414,23 +594,85 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                           Settings.themeWhat ? Colors.white : Colors.grey,
                       animationDuration: const Duration(milliseconds: 500)),
                   header: Padding(
-                    padding: EdgeInsets.fromLTRB(12, 12, 0, 0),
-                    child: Text(Translations.of(context).trans('similar') +
-                        ' ' +
-                        (widget.isGroup
-                            ? Translations.of(context).trans('igroups')
-                            : widget.isUploader
-                                ? Translations.of(context).trans('iuploader')
-                                : Translations.of(context).trans('iartists'))),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+                    child: Text(
+                        '${Translations.of(context).trans('comment')} (${(comments != null ? comments!.length : 0)})'),
+                  ),
+                  expanded: commentArea(),
+                  collapsed: Container(),
+                ),
+              ),
+            ),
+          ),
+          widget.isCharacter || widget.isSeries
+              ? ExpandableNotifier(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: ScrollOnExpand(
+                      child: ExpandablePanel(
+                        theme: ExpandableThemeData(
+                            iconColor:
+                                Settings.themeWhat ? Colors.white : Colors.grey,
+                            animationDuration:
+                                const Duration(milliseconds: 500)),
+                        header: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+                          child: Text(
+                              '${Translations.of(context).trans('related')} ${widget.isSeries ? Translations.of(context).trans('iseries') : Translations.of(context).trans('icharacter')}'),
+                        ),
+                        expanded: relatedArea(),
+                        collapsed: Container(),
+                      ),
+                    ),
+                  ),
+                )
+              : Container(),
+          widget.isCharacter || widget.isSeries
+              ? ExpandableNotifier(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: ScrollOnExpand(
+                      child: ExpandablePanel(
+                        theme: ExpandableThemeData(
+                            iconColor:
+                                Settings.themeWhat ? Colors.white : Colors.grey,
+                            animationDuration:
+                                const Duration(milliseconds: 500)),
+                        header: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+                          child: Text(
+                              '${Translations.of(context).trans('related')} ${widget.isCharacter ? Translations.of(context).trans('iseries') : Translations.of(context).trans('icharacter')}'),
+                        ),
+                        expanded: relatedSingleArea(),
+                        collapsed: Container(),
+                      ),
+                    ),
+                  ),
+                )
+              : Container(),
+          ExpandableNotifier(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: ScrollOnExpand(
+                child: ExpandablePanel(
+                  theme: ExpandableThemeData(
+                      iconColor:
+                          Settings.themeWhat ? Colors.white : Colors.grey,
+                      animationDuration: const Duration(milliseconds: 500)),
+                  header: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+                    child: Text(
+                        '${Translations.of(context).trans('similar')} ${widget.isGroup ? Translations.of(context).trans('igroups') : widget.isUploader ? Translations.of(context).trans('iuploader') : widget.isSeries ? Translations.of(context).trans('iseries') : widget.isCharacter ? Translations.of(context).trans('icharacter') : Translations.of(context).trans('iartists')}'),
                   ),
                   expanded: similarArea(),
+                  collapsed: Container(),
                 ),
               ),
             ),
           ),
           ExpandableNotifier(
             child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 4.0),
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: ScrollOnExpand(
                 child: ExpandablePanel(
                   theme: ExpandableThemeData(
@@ -438,11 +680,12 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
                           Settings.themeWhat ? Colors.white : Colors.grey,
                       animationDuration: const Duration(milliseconds: 500)),
                   header: Padding(
-                    padding: EdgeInsets.fromLTRB(12, 12, 0, 0),
-                    child: Text(Translations.of(context).trans('series') +
-                        ' (${series.length})'),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+                    child: Text(
+                        '${Translations.of(context).trans('series')} (${series.length})'),
                   ),
                   expanded: seriesArea(),
+                  collapsed: Container(),
                 ),
               ),
             ),
@@ -453,50 +696,35 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
   }
 
   ExpandableController ec = ExpandableController();
+  ExpandableController commentAreaEC = ExpandableController();
 
-  Widget more(Widget what) {
+  Widget more(Widget Function() what) {
     return SizedBox(
-        height: 60,
-        child: InkWell(
-            onTap: () async {
-              Navigator.of(context).push(PageRouteBuilder(
-                opaque: false,
-                transitionDuration: Duration(milliseconds: 500),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                  var begin = Offset(0.0, 1.0);
-                  var end = Offset.zero;
-                  var curve = Curves.ease;
-
-                  var tween = Tween(begin: begin, end: end)
-                      .chain(CurveTween(curve: curve));
-
-                  return SlideTransition(
-                    position: animation.drive(tween),
-                    child: child,
-                  );
-                },
-                pageBuilder: (_, __, ___) => what,
-              ));
-            },
-            child: Row(
-              children: [Text(Translations.of(context).trans('more'))],
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.center,
-            )));
+      height: 60,
+      child: InkWell(
+        onTap: () async {
+          PlatformNavigator.navigateSlide(context, what(), opaque: false);
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [Text(Translations.of(context).trans('more'))],
+        ),
+      ),
+    );
   }
 
   Widget articleArea() {
     var windowWidth = MediaQuery.of(context).size.width;
     return LiveGrid(
       shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
-      showItemInterval: Duration(milliseconds: 50),
-      showItemDuration: Duration(milliseconds: 150),
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      showItemInterval: const Duration(milliseconds: 50),
+      showItemDuration: const Duration(milliseconds: 150),
       visibleFraction: 0.001,
       itemCount: min(cc.length, 6),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
@@ -510,7 +738,7 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
           ).animate(animation),
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: Offset(0, -0.1),
+              begin: const Offset(0, -0.1),
               end: Offset.zero,
             ).animate(animation),
             child: Padding(
@@ -518,12 +746,16 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: SizedBox(
-                  child: ArticleListItemVerySimpleWidget(
-                    queryResult: cc[index],
-                    showDetail: false,
-                    addBottomPadding: false,
-                    width: (windowWidth - 4.0) / 3,
-                    thumbnailTag: Uuid().v4(),
+                  child: Provider<ArticleListItem>.value(
+                    value: ArticleListItem.fromArticleListItem(
+                      queryResult: cc[index],
+                      showDetail: false,
+                      addBottomPadding: false,
+                      width: (windowWidth - 4.0) / 3,
+                      thumbnailTag: const Uuid().v4(),
+                      usableTabList: cc,
+                    ),
+                    child: const ArticleListItemVerySimpleWidget(),
                   ),
                 ),
               ),
@@ -535,277 +767,291 @@ class _ArtistInfoPageState extends State<ArtistInfoPage> {
   }
 
   Widget similarArea() {
-    var windowWidth = MediaQuery.of(context).size.width;
     return ListView.builder(
-        padding: EdgeInsets.all(0),
-        shrinkWrap: true,
-        physics: NeverScrollableScrollPhysics(),
-        itemCount: similars.length + 1,
-        itemBuilder: (BuildContext ctxt, int index) {
-          if (index == similars.length) {
-            return more(SimilarListPage(
-              prefix: prefix,
-              similarsAll: similarsAll,
-              isGroup: widget.isGroup,
-              isUploader: widget.isUploader,
-            ));
-          }
-          var e = similars[index];
-          var qq = qrs[index];
-          return InkWell(
-            onTap: () async {
-              Navigator.of(context).push(PageRouteBuilder(
-                // opaque: false,
-                transitionDuration: Duration(milliseconds: 500),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                  var begin = Offset(0.0, 1.0);
-                  var end = Offset.zero;
-                  var curve = Curves.ease;
-
-                  var tween = Tween(begin: begin, end: end)
-                      .chain(CurveTween(curve: curve));
-
-                  return SlideTransition(
-                    position: animation.drive(tween),
-                    child: child,
-                  );
-                },
-                pageBuilder: (_, __, ___) => ArtistInfoPage(
-                  isGroup: widget.isGroup,
-                  isUploader: widget.isUploader,
-                  artist: e.item1,
-                ),
+      padding: const EdgeInsets.all(0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: similars.length + 1,
+      itemBuilder: (BuildContext ctxt, int index) {
+        if (index == similars.length) {
+          return more(() => SimilarListPage(
+                prefix: prefix,
+                similarsAll: similarsAll,
+                isGroup: widget.isGroup,
+                isUploader: widget.isUploader,
+                isCharacter: widget.isCharacter,
+                isSeries: widget.isSeries,
               ));
-            },
-            child: SizedBox(
-              height: 195,
-              child: Padding(
-                  padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        // crossAxisAlignment: CrossAxisAlignment,
-                        children: <Widget>[
-                          Text(
-                              // (index + 1).toString() +
-                              //     '. ' +
-                              ' ' +
-                                  e.item1 +
-                                  ' (' +
-                                  HitomiManager.getArticleCount(
-                                          widget.isGroup
-                                              ? 'group'
-                                              : widget.isUploader
-                                                  ? 'uploader'
-                                                  : 'artist',
-                                          e.item1)
-                                      .toString() +
-                                  ')',
-                              style: TextStyle(fontSize: 17)),
-                          Text(
-                              '${Translations.of(context).trans('score')}: ' +
-                                  e.item2.toStringAsFixed(1) +
-                                  ' ',
-                              style: TextStyle(
-                                color: Settings.themeWhat
-                                    ? Colors.grey.shade300
-                                    : Colors.grey.shade700,
-                              )),
-                        ],
-                      ),
-                      SizedBox(
-                        height: 162,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: <Widget>[
-                            Expanded(
-                                flex: 1,
-                                child: qq.length > 0
-                                    ? Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: ArticleListItemVerySimpleWidget(
-                                          queryResult: qq[0],
-                                          showDetail: false,
-                                          addBottomPadding: false,
-                                          width:
-                                              (windowWidth - 16 - 4.0 - 1.0) /
-                                                  3,
-                                          thumbnailTag: Uuid().v4(),
-                                        ))
-                                    : Container()),
-                            Expanded(
-                                flex: 1,
-                                child: qq.length > 1
-                                    ? Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: ArticleListItemVerySimpleWidget(
-                                          queryResult: qq[1],
-                                          showDetail: false,
-                                          addBottomPadding: false,
-                                          width:
-                                              (windowWidth - 16 - 4.0 - 16.0) /
-                                                  3,
-                                          thumbnailTag: Uuid().v4(),
-                                        ))
-                                    : Container()),
-                            Expanded(
-                                flex: 1,
-                                child: qq.length > 2
-                                    ? Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: ArticleListItemVerySimpleWidget(
-                                          queryResult: qq[2],
-                                          showDetail: false,
-                                          addBottomPadding: false,
-                                          width:
-                                              (windowWidth - 16 - 4.0 - 16.0) /
-                                                  3,
-                                          thumbnailTag: Uuid().v4(),
-                                        ))
-                                    : Container()),
-                          ],
-                        ),
-                      ),
-                      // Container(
-                      //   padding: EdgeInsets.all(2),
-                      // ),
-                      // Text('Score: ' + e.item2.toStringAsFixed(1),
-                      //     style: TextStyle(color: Colors.grey.shade300)),
-                    ],
-                  )),
-            ),
-          );
-        });
+        }
+        var e = similars[index];
+        var qq = qrs[index];
+
+        var type = 'artist';
+        if (widget.isGroup)
+          type = 'group';
+        else if (widget.isUploader)
+          type = 'uploader';
+        else if (widget.isSeries)
+          type = 'series';
+        else if (widget.isCharacter) type = 'character';
+
+        return ThreeArticlePanel(
+          tappedRoute: () => ArtistInfoPage(
+            isGroup: widget.isGroup,
+            isUploader: widget.isUploader,
+            isCharacter: widget.isCharacter,
+            isSeries: widget.isSeries,
+            artist: e.item1,
+          ),
+          title:
+              ' ${e.item1} (${HitomiManager.getArticleCount(type, e.item1).toString()})',
+          count:
+              '${Translations.of(context).trans('score')}: ${e.item2.toStringAsFixed(1)} ',
+          articles: qq,
+        );
+      },
+    );
   }
 
   Widget seriesArea() {
-    var unescape = new HtmlUnescape();
-    var windowWidth = MediaQuery.of(context).size.width;
+    var unescape = HtmlUnescape();
     return ListView.builder(
-        padding: EdgeInsets.all(0),
-        shrinkWrap: true,
-        physics: NeverScrollableScrollPhysics(),
-        itemCount: min(series.length, 6) + (series.length > 6 ? 1 : 0),
-        itemBuilder: (BuildContext ctxt, int index) {
-          if (index == 6) {
-            return more(SeriesListPage(
-              cc: cc,
-              prefix: prefix,
-              series: series,
-            ));
-          }
-          var e = series[index];
-          return InkWell(
-            onTap: () async {
-              // Navigator.of(context).push(PageRouteBuilder(
-              //   // opaque: false,
-              //   transitionDuration: Duration(milliseconds: 500),
-              //   transitionsBuilder:
-              //       (context, animation, secondaryAnimation, child) {
-              //     var begin = Offset(0.0, 1.0);
-              //     var end = Offset.zero;
-              //     var curve = Curves.ease;
+      padding: const EdgeInsets.all(0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: min(series.length, 6) + (series.length > 6 ? 1 : 0),
+      itemBuilder: (BuildContext ctxt, int index) {
+        if (index == 6) {
+          return more(() => SeriesListPage(
+                cc: cc,
+                prefix: prefix,
+                series: series,
+              ));
+        }
+        var e = series[index];
 
-              //     var tween = Tween(begin: begin, end: end)
-              //         .chain(CurveTween(curve: curve));
+        return ThreeArticlePanel(
+          tappedRoute: () =>
+              ArticleListPage(cc: e.map((e) => cc[e]).toList(), name: 'Series'),
+          title: ' ${unescape.convert(cc[e[0]].title())}',
+          count: '${e.length} ',
+          articles: e.map((e) => cc[e]).toList(),
+        );
+      },
+    );
+  }
 
-              //     return SlideTransition(
-              //       position: animation.drive(tween),
-              //       child: child,
-              //     );
-              //   },
-              //   pageBuilder: (_, __, ___) => ArtistInfoPage(
-              //     isGroup: widget.isGroup,
-              //     isUploader: widget.isUploader,
-              //     artist: e.item1,
-              //   ),
-              // ));
-            },
-            child: SizedBox(
-              height: 195,
-              child: Padding(
-                  padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          Flexible(
-                              child: Text(
-                                  // (index + 1).toString() +
-                                  //     '. ' +
-                                  ' ' + unescape.convert(cc[e[0]].title()),
-                                  style: TextStyle(fontSize: 17),
-                                  overflow: TextOverflow.ellipsis)),
-                          Text(e.length.toString() + ' ',
-                              style: TextStyle(
-                                color: Settings.themeWhat
-                                    ? Colors.grey.shade300
-                                    : Colors.grey.shade700,
-                              )),
-                        ],
-                      ),
-                      SizedBox(
-                        height: 162,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: <Widget>[
-                            Expanded(
-                                flex: 1,
-                                child: e.length > 0
-                                    ? Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: ArticleListItemVerySimpleWidget(
-                                          queryResult: cc[e[0]],
-                                          showDetail: false,
-                                          addBottomPadding: false,
-                                          width:
-                                              (windowWidth - 16 - 4.0 - 1.0) /
-                                                  3,
-                                          thumbnailTag: Uuid().v4(),
-                                        ))
-                                    : Container()),
-                            Expanded(
-                                flex: 1,
-                                child: e.length > 1
-                                    ? Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: ArticleListItemVerySimpleWidget(
-                                          queryResult: cc[e[1]],
-                                          showDetail: false,
-                                          addBottomPadding: false,
-                                          width:
-                                              (windowWidth - 16 - 4.0 - 16.0) /
-                                                  3,
-                                          thumbnailTag: Uuid().v4(),
-                                        ))
-                                    : Container()),
-                            Expanded(
-                                flex: 1,
-                                child: e.length > 2
-                                    ? Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: ArticleListItemVerySimpleWidget(
-                                          queryResult: cc[e[2]],
-                                          showDetail: false,
-                                          addBottomPadding: false,
-                                          width:
-                                              (windowWidth - 16 - 4.0 - 16.0) /
-                                                  3,
-                                          thumbnailTag: Uuid().v4(),
-                                        ))
-                                    : Container()),
-                          ],
-                        ),
-                      ),
-                    ],
-                  )),
+  Widget commentArea() {
+    if (comments != null && comments!.isNotEmpty) {
+      var children = List<Widget>.from(comments!.map((e) {
+        return InkWell(
+          onTap: () async {
+            AlertDialog alert = AlertDialog(
+              content: SelectableText(e.item3),
+            );
+            await showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return alert;
+              },
+            );
+          },
+          splashColor: Colors.white,
+          child: ListTile(
+            title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: <Widget>[
+                  Text(e.item2.substring(0, 6)),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                          DateFormat('yyyy-MM-dd HH:mm')
+                              .format(e.item1.toLocal()),
+                          style: const TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ]),
+            subtitle: Text(e.item3),
+          ),
+        );
+      }));
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children + [comment(context)],
+        ),
+      );
+    } else {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                // alignment: Alignment.center,
+                child: Align(
+                  // alignment: Alignment.center,
+                  child: Text(
+                    Translations.of(context).trans('nocomment'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            ],
+          ),
+          comment(context),
+        ],
+      );
+    }
+  }
+
+  Widget comment(context) {
+    return InkWell(
+      onTap: () async {
+        TextEditingController text = TextEditingController();
+        Widget okButton = TextButton(
+          style: TextButton.styleFrom(primary: Settings.majorColor),
+          child: Text(Translations.of(context).trans('ok')),
+          onPressed: () async {
+            if (text.text.length < 5 || text.text.length > 500) {
+              await showOkDialog(context, 'Comment too short or long!',
+                  Translations.of(context).trans('comment'));
+              return;
+            }
+            await VioletCommunityAnonymous.postArtistComment(
+                null,
+                (widget.isGroup
+                        ? 'group:'
+                        : widget.isUploader
+                            ? 'uploader:'
+                            : widget.isSeries
+                                ? 'series:'
+                                : widget.isCharacter
+                                    ? 'character:'
+                                    : 'artist:') +
+                    widget.artist,
+                text.text);
+            await readComments();
+            Navigator.pop(context, true);
+          },
+        );
+        Widget cancelButton = TextButton(
+          style: TextButton.styleFrom(primary: Settings.majorColor),
+          child: Text(Translations.of(context).trans('cancel')),
+          onPressed: () {
+            Navigator.pop(context, false);
+          },
+        );
+        await showDialog(
+          useRootNavigator: false,
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            contentPadding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            title: Text(Translations.of(context).trans('writecomment')),
+            content: TextField(
+              controller: text,
+              autofocus: true,
             ),
-          );
-        });
+            actions: [okButton, cancelButton],
+          ),
+        );
+      },
+      splashColor: Colors.white,
+      child: ListTile(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [Text(Translations.of(context).trans('writecomment'))],
+        ),
+      ),
+    );
+  }
+
+  Widget relatedArea() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: relatedCharacterOrSeries.length + 1,
+      itemBuilder: (BuildContext ctxt, int index) {
+        if (index == relatedCharacterOrSeries.length) {
+          return more(() => SimilarListPage(
+                prefix: prefix,
+                similarsAll: relatedCharacterOrSeriesAll,
+                isGroup: widget.isGroup,
+                isUploader: widget.isUploader,
+                isCharacter: widget.isCharacter,
+                isSeries: widget.isSeries,
+              ));
+        }
+
+        var e = relatedCharacterOrSeries[index];
+        var qq = qrsCharacterOrSeries[index];
+
+        var cls = 'character';
+        if (widget.isCharacter) cls = 'series';
+
+        return ThreeArticlePanel(
+          tappedRoute: () => ArtistInfoPage(
+            isGroup: widget.isGroup,
+            isUploader: widget.isUploader,
+            isCharacter: widget.isCharacter,
+            isSeries: widget.isSeries,
+            artist: e.item1,
+          ),
+          title: ' ${e.item1} (${HitomiManager.getArticleCount(cls, e.item1)})',
+          count:
+              '${Translations.of(context).trans('score')}: ${e.item2.toStringAsFixed(1)} ',
+          articles: qq,
+        );
+      },
+    );
+  }
+
+  Widget relatedSingleArea() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: relatedCOSSingle.length + 1,
+      itemBuilder: (BuildContext ctxt, int index) {
+        if (index == relatedCOSSingle.length) {
+          return more(() => SimilarListPage(
+                prefix: widget.isCharacter ? 'series:' : 'character:',
+                similarsAll: relatedCOSSingleAll,
+                isGroup: widget.isGroup,
+                isUploader: widget.isUploader,
+                isSeries: widget.isCharacter,
+                isCharacter: widget.isSeries,
+              ));
+        }
+        var e = relatedCOSSingle[index];
+        var qq = qrsCOSSingle[index];
+
+        var cls = 'character';
+        if (widget.isCharacter) cls = 'series';
+
+        return ThreeArticlePanel(
+          tappedRoute: () => ArtistInfoPage(
+            isGroup: widget.isGroup,
+            isUploader: widget.isUploader,
+            isSeries: widget.isCharacter,
+            isCharacter: widget.isSeries,
+            artist: e.item1,
+          ),
+          title: ' ${e.item1} (${HitomiManager.getArticleCount(cls, e.item1)})',
+          count:
+              '${Translations.of(context).trans('score')}: ${e.item2.toStringAsFixed(1)} ',
+          articles: qq,
+        );
+      },
+    );
   }
 }

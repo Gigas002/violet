@@ -1,15 +1,16 @@
 // https://github.com/jhontona/animated-floatbuttons/
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 import 'package:flutter/material.dart';
-import 'package:violet/settings.dart';
+import 'package:violet/settings/settings.dart';
 
 class TransformFloatButton extends StatelessWidget {
   final Widget floatButton;
   final double translateValue;
 
-  TransformFloatButton({this.floatButton, this.translateValue})
+  TransformFloatButton(
+      {required this.floatButton, required this.translateValue})
       : super(key: ObjectKey(floatButton));
 
   @override
@@ -33,15 +34,15 @@ class AnimatedFloatingActionButton extends StatefulWidget {
   final AnimatedIconData animatedIconData;
   final VoidCallback exitCallback;
 
-  AnimatedFloatingActionButton({
-    Key key,
-    this.fabButtons,
-    this.animatedIconData,
-    this.exitCallback,
+  const AnimatedFloatingActionButton({
+    Key? key,
+    required this.fabButtons,
+    required this.animatedIconData,
+    required this.exitCallback,
   }) : super(key: key);
 
   @override
-  _AnimatedFloatingActionButtonState createState() =>
+  State<AnimatedFloatingActionButton> createState() =>
       _AnimatedFloatingActionButtonState();
 }
 
@@ -49,19 +50,20 @@ class _AnimatedFloatingActionButtonState
     extends State<AnimatedFloatingActionButton>
     with SingleTickerProviderStateMixin {
   bool isOpened = true;
-  AnimationController _animationController;
-  Animation<double> _animateIcon;
-  Animation<double> _translateButton;
-  Curve _curve = Curves.easeOut;
-  double _fabHeight = 56.0;
+  late AnimationController _animationController;
+  late Animation<double> _animateIcon;
+  late Animation<double> _translateButton;
+  final Curve _curve = Curves.easeOut;
+  final double _fabHeight = 56.0;
 
   @override
-  initState() {
-    _animationController =
-        AnimationController(vsync: this, duration: Duration(milliseconds: 300))
-          ..addListener(() {
-            setState(() {});
-          });
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300))
+      ..addListener(() {
+        setState(() {});
+      });
     _animateIcon =
         Tween<double>(begin: 0.0, end: 1.0).animate(_animationController);
     _translateButton = Tween<double>(
@@ -75,12 +77,11 @@ class _AnimatedFloatingActionButtonState
         curve: _curve,
       ),
     ));
-    super.initState();
     _animationController.forward();
   }
 
   @override
-  dispose() {
+  void dispose() {
     _animationController.dispose();
     super.dispose();
   }
@@ -112,7 +113,7 @@ class _AnimatedFloatingActionButtonState
   }
 
   List<Widget> _setFabButtons() {
-    List<Widget> processButtons = List<Widget>();
+    final processButtons = <Widget>[];
     for (int i = 0; i < widget.fabButtons.length; i++) {
       processButtons.add(TransformFloatButton(
         floatButton: widget.fabButtons[i],

@@ -1,5 +1,5 @@
 // This source code is a part of Project Violet.
-// Copyright (C) 2020. violet-team. Licensed under the MIT License.
+// Copyright (C) 2020-2022. violet-team. Licensed under the Apache-2.0 License.
 
 // Implementation of distance functions that satisfy triangle inequality.
 
@@ -24,7 +24,7 @@ class Distance {
 
     if (x == 0) return x;
     if (y == 0) return y;
-    var v0 = List<int>((y + 1) << 1);
+    var v0 = List.filled((y + 1) << 1, 0);
 
     for (i = 0; i < y + 1; i++) v0[i] = i;
     for (i = 0; i < x; i++) {
@@ -46,7 +46,7 @@ class Distance {
 
     if (x == 0) return x;
     if (y == 0) return y;
-    var v0 = List<int>((y + 1) << 1);
+    var v0 = List.filled((y + 1) << 1, 0);
 
     for (i = 0; i < y + 1; i++) v0[i] = i;
     for (i = 0; i < x; i++) {
@@ -60,10 +60,16 @@ class Distance {
     return v0[y + y + 1];
   }
 
+  static int levenshteinDistanceString(String s1, String s2) {
+    final l1 = s1.runes.map((rune) => rune.toString()).toList();
+    final l2 = s2.runes.map((rune) => rune.toString()).toList();
+    return levenshteinDistanceComparable(l1, l2);
+  }
+
   static List<int> levenshteinDistanceRoute<T extends num>(
       List<T> l1, List<T> l2) {
     List<List<int>> dist = List.generate(
-        l1.length + 1, (i) => List(l2.length + 1),
+        l1.length + 1, (i) => List.filled(l2.length + 1, 0),
         growable: false);
 
     for (int i = 0; i <= l1.length; i++) dist[i][0] = i;
@@ -79,8 +85,7 @@ class Distance {
       }
     }
 
-    List<int> route = List<int>(l1.length + 1);
-    route.fillRange(0, route.length, 0);
+    List<int> route = List.filled(l1.length + 1, 0);
     int fz = dist[l1.length][l2.length];
     for (int i = l1.length, j = l2.length; i >= 0 && j >= 0;) {
       int lu = 987654321;
